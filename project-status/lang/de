@@ -1,0 +1,55 @@
+#ddev-generated
+# Deutsche Texte. Format: Schlüssel = printf-Text. Eigene Texte und Abweichungen gehören in de.custom.
+
+option.unknown = project-status: unbekannte Option %s, siehe "ddev project-status -h".
+check.timeout = Zeitlimit von %ss überschritten: %s
+check.broken = Prüfung fehlerhaft (Exit-Code %s): %s
+
+section.project = Projekt
+section.checks = Prüfungen
+section.next = Nächste Schritte
+section.commands = Befehle
+
+info.url = URL
+info.typo3 = TYPO3
+info.php = PHP
+info.database = Datenbank
+info.webserver = Webserver
+info.docroot = Docroot
+info.composer = Composer
+info.node = Node
+
+summary.no_checks = project-status: keine Prüfungen hinterlegt (%s).
+summary.ok = project-status: Projekt ist auf aktuellem Stand (%s Prüfungen).
+summary.ok_skipped = project-status: Projekt ist auf aktuellem Stand (%s Prüfungen, %s nicht zutreffend).
+summary.problems = project-status: %s Problem(e) gefunden.
+summary.problems_hint = project-status: %s Problem(e) gefunden, alle Prüfungen mit "ddev project-status -v".
+
+commands.help = Hilfe zu einem Befehl: ddev <befehl> -h
+
+composer.no_json = Keine composer.json in %s
+composer.no_vendor = vendor/ fehlt
+composer.ok = Composer-Pakete passen zur composer.lock
+composer.outdated = Composer-Pakete passen nicht zur composer.lock
+
+npm.no_frontend = Kein FRONTEND_DIR konfiguriert
+npm.no_package_json = Keine package.json in %s
+npm.no_node_modules = %s/node_modules fehlt
+npm.no_lock = node_modules vorhanden (keine package-lock.json)
+npm.no_node = npm-Stand nicht prüfbar (node nicht verfügbar)
+npm.ok = node_modules passt zur package-lock.json
+npm.outdated = node_modules passt nicht zur package-lock.json
+npm.unknown = node_modules ohne Installations-Stand
+
+database.unreachable = Datenbank nicht erreichbar
+database.empty = Datenbank ist leer
+database.ok = Datenbank enthält %s Tabellen
+
+folders.none = Keine REQUIRED_DIRS konfiguriert
+folders.created = Ordner angelegt: %s
+folders.failed = Ordner fehlt und lässt sich nicht anlegen: %s
+folders.ok = Alle %s Pflicht-Ordner vorhanden
+
+assets.none = Keine REQUIRED_ASSETS konfiguriert
+assets.missing = Build-Ergebnis fehlt: %s
+assets.ok = Alle %s Build-Ergebnisse vorhanden

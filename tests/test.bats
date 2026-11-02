@@ -15,11 +15,10 @@
 setup() {
   set -eu -o pipefail
 
-  # Override this variable for your add-on:
   export GITHUB_REPO=cosmoblonde/ddev-project-status
 
   TEST_BREW_PREFIX="$(brew --prefix 2>/dev/null || true)"
-  export BATS_LIB_PATH="${BATS_LIB_PATH}:${TEST_BREW_PREFIX}/lib:/usr/lib/bats"
+  export BATS_LIB_PATH="${BATS_LIB_PATH:-}:${TEST_BREW_PREFIX}/lib:/usr/lib/bats"
   bats_load_library bats-assert
   bats_load_library bats-file
   bats_load_library bats-support
@@ -40,17 +39,35 @@ setup() {
 }
 
 health_checks() {
-  # Do something useful here that verifies the add-on
-
-  # You can check for specific information in headers:
-  # run curl -sfI https://${PROJNAME}.ddev.site
-  # assert_output --partial "HTTP/2 200"
-  # assert_output --partial "test_header"
-
-  # Or check if some command gives expected output:
-  DDEV_DEBUG=true run ddev launch
+  # empty project: database is empty, everything else is not applicable
+  run ddev project-status -v
   assert_success
-  assert_output --partial "FULLURL https://${PROJNAME}.ddev.site"
+  assert_output --partial "[FAIL]  Database is empty"
+  assert_output --partial "[SKIP]  No composer.json"
+  assert_output --partial "ddev import-db --file=<dump.sql.gz>"
+
+  # own check in PHP, following the contract: exit code 1 = WARN, next: line = next step
+  cat > .ddev/project-status/checks/60-custom <<'PHP'
+#!/usr/bin/env php
+<?php
+echo "own check reports something\nnext: ddev my-command\n";
+exit(1);
+PHP
+  chmod +x .ddev/project-status/checks/60-custom
+  run ddev project-status
+  assert_success
+  assert_output --partial "[WARN]  own check reports something"
+  assert_output --partial "ddev my-command"
+
+  # skip by config, quiet output
+  echo 'SKIP_CHECKS="30-database 60-custom"' >> .ddev/project-status/config
+  run ddev project-status -q
+  assert_success
+  assert_output "project-status: project is up to date (0 checks, 4 not applicable)."
+
+  run ddev project-commands
+  assert_success
+  assert_output --partial "project-status"
 }
 
 teardown() {
@@ -70,8 +87,10 @@ teardown() {
   echo "# ddev add-on get ${DIR} with project ${PROJNAME} in $(pwd)" >&3
   run ddev add-on get "${DIR}"
   assert_success
+  assert_file_exist .ddev/project-status/config
   run ddev restart -y
   assert_success
+  assert_output --partial "project-status:"
   health_checks
 }
 
@@ -84,4 +103,20 @@ teardown() {
   run ddev restart -y
   assert_success
   health_checks
+}
+
+@test "German output and own texts" {
+  set -eu -o pipefail
+  run ddev add-on get "${DIR}"
+  assert_success
+  run ddev restart -y
+  assert_success
+
+  echo 'OUTPUT_LANGUAGE="de"' >> .ddev/project-status/config
+  echo 'assets.none = Hier gibt es keine Assets' > .ddev/project-status/lang/de.custom
+  run ddev project-status -v
+  assert_success
+  assert_output --partial "[FAIL]  Datenbank ist leer"
+  assert_output --partial "[SKIP]  Hier gibt es keine Assets"
+  assert_output --partial "Nächste Schritte"
 }

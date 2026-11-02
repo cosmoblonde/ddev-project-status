@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+#ddev-generated
+## Description: List the project's own DDEV commands
+## Usage: project-commands [--no-header]
+## Example: "ddev project-commands"
+## AutocompleteTerms: ["--no-header"]
+
+# --no-header prints only the commands section, used by "project-status -c".
+
+set -e
+
+DDEV_DIR="${PROJECT_STATUS_DDEV_DIR:-/mnt/ddev_config}"
+STATUS_DIR="$DDEV_DIR/project-status"
+# same as in project-status: prefer the live synced project copy for the config
+if [[ -z "${PROJECT_STATUS_DDEV_DIR:-}" && -d /var/www/html/.ddev/project-status ]]; then
+  STATUS_DIR=/var/www/html/.ddev/project-status
+fi
+COMMAND_DIR="$DDEV_DIR/commands/web"
+SELF_NAME="$(basename "$0")"
+
+source "$STATUS_DIR/lib/output.sh"
+cb_load_config
+
+with_header=true
+[ "${1:-}" = "--no-header" ] && with_header=false
+
+# Collect commands
+declare -a COMMANDS=()
+
+for file in "$COMMAND_DIR"/*; do
+  [ -f "$file" ] || continue
+
+  cmd="$(basename "$file")"
+
+  # skip self
+  [ "$cmd" = "$SELF_NAME" ] && continue
+
+  # extract first Description line (works for bash + php)
+  desc="$(grep -m1 '## Description:' "$file" 2>/dev/null | sed 's/.*## Description:[[:space:]]*//')"
+
+  # only include commands that actually define a description
+  if [ -n "$desc" ]; then
+    COMMANDS+=("$cmd|$desc")
+  fi
+done
+
+# nothing found → silent exit
+[ "${#COMMANDS[@]}" -eq 0 ] && exit 0
+
+# sort commands alphabetically
+IFS=$'\n' SORTED=($(printf "%s\n" "${COMMANDS[@]}" | sort))
+unset IFS
+
+$with_header && cb_header
+cb_section "$(t section.commands)"
+
+for entry in "${SORTED[@]}"; do
+  cmd="${entry%%|*}"
+  desc="${entry#*|}"
+  cb_row "$cmd" "$desc"
+done
+
+if $with_header; then
+  echo
+  t commands.help
+  echo
+fi

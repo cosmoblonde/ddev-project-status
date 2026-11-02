@@ -1,0 +1,39 @@
+#ddev-generated
+# Settings for project-status. Copied to .ddev/project-status/config on the first install, updates leave it alone.
+# Format KEY="value", lists separated by spaces. Every value is available to the checks as environment variable.
+# Paths are relative to the project root (/var/www/html).
+
+# Language of all messages: en (default), de, or any language with a file in lang/ (lang/<language>.custom for
+# own texts and overrides, kept on updates). Missing texts fall back to English.
+OUTPUT_LANGUAGE="en"
+
+# Name in front of the project name in the header, e.g. the agency (empty: project name only)
+BRAND=""
+
+# Run project-status on "ddev start" (false: off) and options for that run, e.g. "-v" or "-i"
+HOOK="true"
+HOOK_OPTIONS=""
+
+# Seconds per check before it counts as hanging
+TIMEOUT="20"
+
+# Checks to leave out, by file name with or without extension, e.g. "30-database 50-assets"
+SKIP_CHECKS=""
+
+# Directory containing composer.json
+COMPOSER_DIR="."
+
+# Directory containing package.json and package-lock.json (empty: no frontend)
+FRONTEND_DIR=""
+
+# Folders that must exist; missing ones are created by checks/40-folders
+REQUIRED_DIRS=""
+
+# Build results that must exist, checked by checks/50-assets
+REQUIRED_ASSETS=""
+
+# Commands shown as next step. Empty NPM_HINT / BUILD_HINT: npm ci / npm run build in FRONTEND_DIR.
+# Projects with an own update command can point all three to it, e.g. "ddev project-update".
+COMPOSER_HINT="ddev composer install"
+NPM_HINT=""
+BUILD_HINT=""

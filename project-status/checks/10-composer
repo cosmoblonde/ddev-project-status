@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+#ddev-generated
+# Composer: vendor/ exists and matches composer.lock.
+# --dry-run compares lock file and installed packages without network access.
+
+source "$PROJECT_STATUS_DIR/lib/i18n.sh"
+
+[[ -f "$COMPOSER_DIR/composer.json" ]] || { t composer.no_json "$COMPOSER_DIR"; exit 3; }
+
+if [[ ! -d "$COMPOSER_DIR/vendor" ]]; then
+  t composer.no_vendor
+  echo "next: $COMPOSER_HINT"
+  exit 2
+fi
+
+if composer install --dry-run --no-interaction --working-dir="$COMPOSER_DIR" 2>&1 \
+    | grep -q "Nothing to install, update or remove"; then
+  t composer.ok
+  exit 0
+fi
+
+t composer.outdated
+echo "next: $COMPOSER_HINT"
+exit 1

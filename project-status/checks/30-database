@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+#ddev-generated
+# Database: read-only check whether a dump has been imported yet.
+
+source "$PROJECT_STATUS_DIR/lib/i18n.sh"
+
+if [[ "${DDEV_DATABASE:-}" == postgres* ]]; then
+  tables=$(psql -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'" 2>/dev/null)
+else
+  tables=$(mysql -N -e "SHOW TABLES" 2>/dev/null | wc -l)
+fi
+
+if [[ -z "$tables" ]]; then
+  t database.unreachable
+  exit 1
+fi
+
+if (( tables == 0 )); then
+  t database.empty
+  echo "next: ddev import-db --file=<dump.sql.gz>"
+  exit 2
+fi
+
+t database.ok "$tables"
+exit 0

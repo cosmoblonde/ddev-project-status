@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+#ddev-generated
+# Assets: build results from REQUIRED_ASSETS exist.
+
+source "$PROJECT_STATUS_DIR/lib/i18n.sh"
+
+[[ -n "$REQUIRED_ASSETS" ]] || { t assets.none; exit 3; }
+
+read -ra assets <<< "$REQUIRED_ASSETS"
+missing=()
+for asset in "${assets[@]}"; do
+  [[ -e "$asset" ]] || missing+=("$asset")
+done
+
+if (( ${#missing[@]} )); then
+  t assets.missing "${missing[*]}"
+  echo "next: $BUILD_HINT"
+  exit 1
+fi
+
+t assets.ok "${#assets[@]}"
+exit 0
