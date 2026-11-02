@@ -76,6 +76,11 @@ args=()
 for arg in "$@"; do
   if [[ "$arg" == "--hook" ]]; then
     [[ "$HOOK" == "false" ]] && exit 0
+    # hook output is read by people in the terminal of "ddev start", even though it is not a tty here
+    if [[ -z "${NO_COLOR:-}" ]]; then
+      PROJECT_STATUS_COLOR=1
+      cb_set_colors
+    fi
     # word splitting is intended: HOOK_OPTIONS="-v -i"
     # shellcheck disable=SC2206
     args+=($HOOK_OPTIONS)

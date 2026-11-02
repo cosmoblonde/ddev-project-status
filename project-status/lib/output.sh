@@ -2,13 +2,23 @@
 #ddev-generated
 # Shared helpers for project-status and project-commands. Sourced, not executed.
 
-normal=$'\e[0m'
-bold=$'\e[1m'
-dim=$'\e[2m'
-green=$'\e[32m'
-cyan=$'\e[36m'
-yellow=$'\e[1;33m'
-red=$'\e[1;31m'
+# Colors only on a terminal and without NO_COLOR (https://no-color.org), so piped output and tests get plain text.
+# PROJECT_STATUS_COLOR=1 or 0 overrides that, e.g. for the hook run.
+cb_set_colors() {
+  local use_color=0
+  if [[ -n "${PROJECT_STATUS_COLOR:-}" ]]; then
+    [[ "$PROJECT_STATUS_COLOR" == "1" ]] && use_color=1
+  elif [[ -z "${NO_COLOR:-}" && -t 1 ]]; then
+    use_color=1
+  fi
+  if (( use_color )); then
+    normal=$'\e[0m' bold=$'\e[1m' dim=$'\e[2m' green=$'\e[32m' cyan=$'\e[36m' yellow=$'\e[1;33m' red=$'\e[1;31m'
+  else
+    normal="" bold="" dim="" green="" cyan="" yellow="" red=""
+  fi
+  export PROJECT_STATUS_COLOR="$use_color"
+}
+cb_set_colors
 
 # Width of the first column in cb_row, shared by all commands so that the output lines up
 CB_COLUMN_WIDTH=20

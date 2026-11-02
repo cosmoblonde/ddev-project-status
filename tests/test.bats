@@ -63,7 +63,7 @@ PHP
   echo 'SKIP_CHECKS="30-database 60-custom"' >> .ddev/project-status/config
   run ddev project-status -q
   assert_success
-  assert_output "project-status: project is up to date (0 checks, 3 not applicable)."
+  assert_output "project-status: project is up to date (0 checks, 4 not applicable)."
 
   run ddev project-commands
   assert_success
