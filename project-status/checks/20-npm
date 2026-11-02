@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+#ddev-generated
+# npm: node_modules/ exists and matches package-lock.json.
+# npm >= 7 writes node_modules/.package-lock.json on every install, its package versions are compared with
+# package-lock.json. Without it (npm 6, lockfileVersion 1) the top-level packages are compared with
+# node_modules/<name>/package.json.
+# Compares contents, not file times: Mutagen does not sync modification times into the container.
+
+source "$PROJECT_STATUS_DIR/lib/i18n.sh"
+
+[[ -n "$FRONTEND_DIR" ]] || { t npm.no_frontend; exit 3; }
+[[ -f "$FRONTEND_DIR/package.json" ]] || { t npm.no_package_json "$FRONTEND_DIR"; exit 3; }
+
+if [[ ! -d "$FRONTEND_DIR/node_modules" ]]; then
+  t npm.no_node_modules "$FRONTEND_DIR"
+  echo "next: $NPM_HINT"
+  exit 2
+fi
+
+if [[ ! -f "$FRONTEND_DIR/package-lock.json" ]]; then
+  t npm.no_lock
+  exit 0
+fi
+
+command -v node >/dev/null || { t npm.no_node; exit 1; }
+
+# ES5 on purpose, so the check also runs with old Node versions
+npm_state=$(cd "$FRONTEND_DIR" && node -e '
+  var fs = require("fs");
+  function read(file) { return JSON.parse(fs.readFileSync(file, "utf8")); }
+  function done(state) { console.log(state); process.exit(0); }
+  var lock, installed = null;
+  try { lock = read("package-lock.json"); } catch (e) { done("ok"); }
+  try { installed = read("node_modules/.package-lock.json").packages || {}; } catch (e) {}
+
+  if (installed !== null && lock.packages) {
+    var want = lock.packages, names = Object.keys(want), i, pkg;
+    for (i = 0; i < names.length; i++) {
+      pkg = want[names[i]];
+      // skip the root entry, workspace links and optional (e.g. platform specific) packages
+      if (names[i] === "" || pkg.link) continue;
+      if (!installed[names[i]] ? !pkg.optional : installed[names[i]].version !== pkg.version) done("outdated");
+    }
+    names = Object.keys(installed);
+    for (i = 0; i < names.length; i++) {
+      if (!(names[i] in want)) done("outdated");
+    }
+    done("ok");
+  }
+
+  if (lock.dependencies) {
+    var deps = lock.dependencies, depNames = Object.keys(deps), j, have;
+    for (j = 0; j < depNames.length; j++) {
+      have = null;
+      try { have = read("node_modules/" + depNames[j] + "/package.json").version; } catch (e) {}
+      // optional (e.g. platform specific) packages may be missing
+      if (have === null ? !deps[depNames[j]].optional : have !== deps[depNames[j]].version) done("outdated");
+    }
+    done("ok");
+  }
+
+  done("unknown");
+')
+
+case "$npm_state" in
+  ok)
+    t npm.ok
+    exit 0 ;;
+  outdated)
+    t npm.outdated
+    echo "next: $NPM_HINT"
+    exit 1 ;;
+  *)
+    t npm.unknown
+    echo "next: $NPM_HINT"
+    exit 1 ;;
+esac

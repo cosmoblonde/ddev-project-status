@@ -1,0 +1,235 @@
+#!/usr/bin/env bash
+#ddev-generated
+
+## Description: Check project state without installing anything (checks in .ddev/project-status/checks/)
+## Usage: project-status [-v] [-i] [-c] [-a] [-q]
+## Example: "ddev project-status" (problems only), "ddev project-status -v" (all checks), "ddev project-status -i" (with project data), "ddev project-status -a" (everything)
+## AutocompleteTerms: ["-v", "--verbose", "-i", "--info", "-c", "--commands", "-a", "--all", "-q", "--quiet"]
+
+# Options (short options can be combined, e.g. -iv):
+#   -v, --verbose    show passed and skipped checks, plus stderr of every check
+#   -i, --info       show project data (URL, TYPO3, PHP, database, webserver, Node)
+#   -c, --commands   append the list of project commands (project-commands)
+#   -a, --all        same as -v -i -c
+#   -q, --quiet      summary line only, overrides all other options
+#   --hook           used by config.project-status.yaml: honours HOOK and adds HOOK_OPTIONS from the config
+#
+# Contract for checks in .ddev/project-status/checks/:
+#   - every executable file is a check, in any language (shebang), run in name order from the project root
+#   - exit code: 0 OK, 1 WARN, 2 FAIL, 3 SKIP (not applicable); anything else or a timeout counts as WARN
+#   - stdout: first plain line is the message,
+#             "next: <command>" lines are next steps (collected without duplicates),
+#             "info: <message>" lines report something harmless the check did
+#   - stderr: shown with -v only
+#   - settings from .ddev/project-status/config are available as environment variables,
+#     OUTPUT_LANGUAGE tells the language for messages, bash checks can use lib/i18n.sh
+#
+# Rules for checks: fast, idempotent, offline, no writes to the database or to files under version control.
+# This script must never fail the start, so it always exits with 0.
+
+DDEV_DIR="${PROJECT_STATUS_DDEV_DIR:-/mnt/ddev_config}"
+STATUS_DIR="$DDEV_DIR/project-status"
+# /mnt/ddev_config is filled on start, the project copy is synced live: new checks and config changes count at once
+if [[ -z "${PROJECT_STATUS_DDEV_DIR:-}" && -d /var/www/html/.ddev/project-status ]]; then
+  STATUS_DIR=/var/www/html/.ddev/project-status
+fi
+CHECK_DIR="$STATUS_DIR/checks"
+COMMAND_DIR="$DDEV_DIR/commands/web"
+
+if ! source "$STATUS_DIR/lib/output.sh" 2>/dev/null; then
+  echo "project-status: $STATUS_DIR/lib/output.sh is missing, checks skipped."
+  exit 0
+fi
+cb_load_config
+
+verbose=false
+info=false
+commands=false
+quiet=false
+
+set_option() {
+  case "$1" in
+    -v|--verbose)  verbose=true ;;
+    -i|--info)     info=true ;;
+    -c|--commands) commands=true ;;
+    -a|--all)      verbose=true; info=true; commands=true ;;
+    -q|--quiet)    quiet=true ;;
+    *) t option.unknown "$1"; return 1 ;;
+  esac
+}
+
+parse_options() {
+  local arg n
+  for arg in "$@"; do
+    if [[ "$arg" =~ ^-[a-z]{2,}$ ]]; then
+      # split combined short options like -iv
+      for (( n = 1; n < ${#arg}; n++ )); do
+        set_option "-${arg:n:1}" || return 1
+      done
+    else
+      set_option "$arg" || return 1
+    fi
+  done
+}
+
+args=()
+for arg in "$@"; do
+  if [[ "$arg" == "--hook" ]]; then
+    [[ "$HOOK" == "false" ]] && exit 0
+    # word splitting is intended: HOOK_OPTIONS="-v -i"
+    # shellcheck disable=SC2206
+    args+=($HOOK_OPTIONS)
+  else
+    args+=("$arg")
+  fi
+done
+parse_options "${args[@]}" || exit 0
+
+cd /var/www/html || exit 0
+
+levels=()
+messages=()
+details=()
+steps=()
+checks=0
+
+add_result() {
+  levels+=("$1")
+  messages+=("$2")
+  details+=("${3:-}")
+}
+
+add_step() {
+  local known
+  for known in "${steps[@]}"; do
+    [[ "$known" == "$1" ]] && return
+  done
+  steps+=("$1")
+}
+
+is_skipped() {
+  local name
+  for name in $SKIP_CHECKS; do
+    [[ "$1" == "$name" || "${1%.*}" == "$name" ]] && return 0
+  done
+  return 1
+}
+
+run_check() {
+  local script="$1" name stdout stderr code line message="" level
+  name=$(basename "$script")
+  stderr=$(mktemp)
+  stdout=$(timeout "$TIMEOUT" "$script" 2>"$stderr")
+  code=$?
+
+  while IFS= read -r line; do
+    case "$line" in
+      next:*) add_step "$(echo "${line#next:}" | sed 's/^[[:space:]]*//')" ;;
+      info:*) add_result INFO "$(echo "${line#info:}" | sed 's/^[[:space:]]*//')" ;;
+      *)      [[ -z "$message" && -n "$line" ]] && message="$line" ;;
+    esac
+  done <<< "$stdout"
+
+  case "$code" in
+    0)   level=OK ;;
+    1)   level=WARN ;;
+    2)   level=FAIL ;;
+    3)   level=SKIP ;;
+    124) level=WARN; message=$(t check.timeout "$TIMEOUT" "$name") ;;
+    *)   level=WARN; message="$(t check.broken "$code" "$name")${message:+ – $message}" ;;
+  esac
+  add_result "$level" "${message:-$name}" "$(cat "$stderr")"
+  rm -f "$stderr"
+}
+
+# a missing checks folder is not an error: header, -i and -c still work, the summary says so
+for script in "$CHECK_DIR"/*; do
+  [[ -f "$script" && -x "$script" ]] || continue
+  is_skipped "$(basename "$script")" && continue
+  checks=$((checks + 1))
+  run_check "$script"
+done
+
+passed=0
+skipped=0
+problems=0
+for level in "${levels[@]}"; do
+  case "$level" in
+    OK)        passed=$((passed + 1)) ;;
+    SKIP)      skipped=$((skipped + 1)) ;;
+    WARN|FAIL) problems=$((problems + 1)) ;;
+  esac
+done
+
+show_info() {
+  local typo3 database frontend
+  # read the installed version from Composer's metadata, faster than booting TYPO3 or running composer show
+  typo3=$(php -r '
+    $file = $argv[1];
+    if (is_file($file)) {
+        $installed = require $file;
+        echo $installed["versions"]["typo3/cms-core"]["pretty_version"] ?? "";
+    }
+  ' "$COMPOSER_DIR/vendor/composer/installed.php" 2>/dev/null)
+
+  cb_section "$(t section.project)"
+  cb_row "$(t info.url)" "${DDEV_PRIMARY_URL:--}"
+  [[ -n "$typo3" ]] && cb_row "$(t info.typo3)" "${typo3#v}"
+  cb_row "$(t info.php)" "$(php -r 'echo PHP_VERSION;' 2>/dev/null)"
+  # DDEV_DATABASE looks like "mariadb:10.11"
+  database="${DDEV_DATABASE:--}"
+  cb_row "$(t info.database)" "${database/:/ }"
+  cb_row "$(t info.webserver)" "${DDEV_WEBSERVER_TYPE:--}"
+  cb_row "$(t info.docroot)" "${DDEV_DOCROOT:--}"
+  [[ "$COMPOSER_DIR" != "." ]] && cb_row "$(t info.composer)" "$COMPOSER_DIR"
+  if [[ -n "$FRONTEND_DIR" ]]; then
+    frontend="$FRONTEND_DIR"
+    command -v node >/dev/null && frontend="$(node -v 2>/dev/null) / npm $(npm -v 2>/dev/null)  ($FRONTEND_DIR)"
+    cb_row "$(t info.node)" "$frontend"
+  fi
+}
+
+if ! $quiet; then
+  cb_header
+  $info && show_info
+
+  shown=0
+  for n in "${!levels[@]}"; do
+    case "${levels[n]}" in
+      OK|SKIP) $verbose || continue ;;
+    esac
+    # heading only when there is something to show below it
+    (( shown++ )) || cb_section "$(t section.checks)"
+    cb_status "${levels[n]}" "${messages[n]}"
+    if $verbose && [[ -n "${details[n]}" ]]; then
+      sed "s/^/          ${dim}/; s/\$/${normal}/" <<< "${details[n]}"
+    fi
+  done
+
+  if (( ${#steps[@]} )); then
+    cb_section "$(t section.next)"
+    for step in "${steps[@]}"; do
+      echo "  $step"
+    done
+  fi
+
+  if $commands && [[ -x "$COMMAND_DIR/project-commands" ]]; then
+    PROJECT_STATUS_DDEV_DIR="$DDEV_DIR" "$COMMAND_DIR/project-commands" --no-header
+  fi
+
+  echo
+fi
+
+if (( checks == 0 )); then
+  t summary.no_checks "$CHECK_DIR"
+elif (( problems == 0 && skipped == 0 )); then
+  t summary.ok "$passed"
+elif (( problems == 0 )); then
+  t summary.ok_skipped "$passed" "$skipped"
+elif $verbose; then
+  t summary.problems "$problems"
+else
+  t summary.problems_hint "$problems"
+fi
+
+exit 0

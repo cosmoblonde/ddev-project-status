@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+#ddev-generated
+# Folders: create missing ones from REQUIRED_DIRS. Creating empty folders is cheap and has no side effects.
+
+source "$PROJECT_STATUS_DIR/lib/i18n.sh"
+
+[[ -n "$REQUIRED_DIRS" ]] || { t folders.none; exit 3; }
+
+read -ra dirs <<< "$REQUIRED_DIRS"
+failed=()
+for dir in "${dirs[@]}"; do
+  [[ -d "$dir" ]] && continue
+  if mkdir -p "$dir"; then
+    echo "info: $(t folders.created "$dir")"
+  else
+    failed+=("$dir")
+  fi
+done
+
+if (( ${#failed[@]} )); then
+  t folders.failed "${failed[*]}"
+  exit 2
+fi
+
+t folders.ok "${#dirs[@]}"
+exit 0

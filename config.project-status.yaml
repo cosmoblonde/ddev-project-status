@@ -1,0 +1,6 @@
+#ddev-generated
+# Runs project-status on every start. Switch off or add options in .ddev/project-status/config (HOOK, HOOK_OPTIONS).
+# Hooks from config.*.yaml are added to those in config.yaml, so this does not replace project hooks.
+hooks:
+  post-start:
+    - exec: /mnt/ddev_config/commands/web/project-status --hook

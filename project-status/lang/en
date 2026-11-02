@@ -1,0 +1,55 @@
+#ddev-generated
+# English texts (default). Format: key = printf text. Own texts and overrides go to en.custom.
+
+option.unknown = project-status: unknown option %s, see "ddev project-status -h".
+check.timeout = Time limit of %ss exceeded: %s
+check.broken = Check failed (exit code %s): %s
+
+section.project = Project
+section.checks = Checks
+section.next = Next steps
+section.commands = Commands
+
+info.url = URL
+info.typo3 = TYPO3
+info.php = PHP
+info.database = Database
+info.webserver = Web server
+info.docroot = Docroot
+info.composer = Composer
+info.node = Node
+
+summary.no_checks = project-status: no checks found (%s).
+summary.ok = project-status: project is up to date (%s checks).
+summary.ok_skipped = project-status: project is up to date (%s checks, %s not applicable).
+summary.problems = project-status: %s problem(s) found.
+summary.problems_hint = project-status: %s problem(s) found, all checks with "ddev project-status -v".
+
+commands.help = Help for a command: ddev <command> -h
+
+composer.no_json = No composer.json in %s
+composer.no_vendor = vendor/ is missing
+composer.ok = Composer packages match composer.lock
+composer.outdated = Composer packages do not match composer.lock
+
+npm.no_frontend = No FRONTEND_DIR configured
+npm.no_package_json = No package.json in %s
+npm.no_node_modules = %s/node_modules is missing
+npm.no_lock = node_modules present (no package-lock.json)
+npm.no_node = npm state cannot be checked (node not available)
+npm.ok = node_modules matches package-lock.json
+npm.outdated = node_modules does not match package-lock.json
+npm.unknown = node_modules has no install state
+
+database.unreachable = Database not reachable
+database.empty = Database is empty
+database.ok = Database contains %s tables
+
+folders.none = No REQUIRED_DIRS configured
+folders.created = Folder created: %s
+folders.failed = Folder missing and cannot be created: %s
+folders.ok = All %s required folders present
+
+assets.none = No REQUIRED_ASSETS configured
+assets.missing = Build result missing: %s
+assets.ok = All %s build results present

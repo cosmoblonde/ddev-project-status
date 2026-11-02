@@ -1,6 +1,42 @@
 name: project-status
 
+# Copied into the project's .ddev directory. Files with #ddev-generated are replaced by a later
+# "ddev add-on get" and removed by "ddev add-on remove". Own checks and project-status/config are not listed,
+# so updates and removal leave them alone.
 project_files:
-  - docker-compose.project-status.yaml
+  - commands/web/project-status
+  - commands/web/project-commands
+  - config.project-status.yaml
+  - project-status/lib/output.sh
+  - project-status/lib/i18n.sh
+  - project-status/lang/en
+  - project-status/lang/de
+  - project-status/config.example
+  - project-status/checks/10-composer
+  - project-status/checks/20-npm
+  - project-status/checks/30-database
+  - project-status/checks/40-folders
+  - project-status/checks/50-assets
 
 ddev_version_constraint: '>= v1.24.10'
+
+# post_install_actions are executed in the context of the target project's .ddev directory.
+post_install_actions:
+  - |
+    #ddev-description:Make commands and checks executable
+    chmod +x commands/web/project-status commands/web/project-commands project-status/checks/*
+  - |
+    #ddev-description:Create project-status/config from config.example if it does not exist yet
+    if [ ! -f project-status/config ]; then
+      grep -v '#ddev-generated' project-status/config.example > project-status/config
+      echo "project-status/config angelegt, bitte Pfade prüfen."
+    fi
+
+# removal_actions are executed in the context of the target project's .ddev directory.
+removal_actions:
+  - |
+    #ddev-description:Keep own checks and config, remove folders that are empty now
+    rmdir project-status/checks project-status/lib project-status/lang 2>/dev/null || true
+    if [ -d project-status ]; then
+      echo "project-status/ enthält eigene Prüfungen oder die config und bleibt stehen."
+    fi
