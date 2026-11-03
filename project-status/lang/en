@@ -53,3 +53,11 @@ folders.ok = All %s required folders present
 assets.none = No REQUIRED_ASSETS configured
 assets.missing = Build result missing: %s
 assets.ok = All %s build results present
+
+solr.no_config = No TYPO3 Solr configuration (.ddev/typo3-solr/config.yaml)
+solr.no_addon = TYPO3 Solr is configured, but the add-on ddev/ddev-typo3-solr is not installed
+solr.no_yq = Solr cores cannot be checked (yq not available)
+solr.unreachable = Solr does not answer
+solr.not_ready = Solr is running but not ready (HTTP %s), see the Solr log
+solr.cores_missing = Solr cores missing: %s
+solr.ok = All %s Solr cores present

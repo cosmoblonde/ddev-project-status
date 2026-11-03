@@ -151,8 +151,19 @@ The `## Description:` lines of the commands cannot be translated: DDEV reads the
 | `30-database` | database contains tables (MySQL/MariaDB or PostgreSQL, read only) | – |
 | `40-folders` | folders from `REQUIRED_DIRS` exist, missing ones are created | no `REQUIRED_DIRS` |
 | `50-assets` | build results from `REQUIRED_ASSETS` exist | no `REQUIRED_ASSETS` |
+| `55-typo3-solr` | [ddev/ddev-typo3-solr](https://github.com/ddev/ddev-typo3-solr) is installed, Solr answers and has all cores from `.ddev/typo3-solr/config.yaml` (admin API, read only) | no `.ddev/typo3-solr/config.yaml` |
 
 Checks compare contents, not file times: with Mutagen, modification times do not reach the container.
+
+Own checks start at `60-`, so bundled checks added later never collide with them.
+
+**TYPO3 Solr "running but not ready":** the Solr container runs, but Solr itself did not start, so every request
+fails and `ddev solrctl apply` cannot create cores. A common cause is file permissions: `solrctl` copies `solr.xml`,
+`typo3lib/` and the configsets with `docker cp`, which keeps owner and mode from the host. If these files are readable
+by their owner only (mode `600`, as composer sometimes extracts them), the `solr` user in the container cannot read
+them. `ddev logs -s typo3-solr` then shows "Could not load SOLR configuration". Fix: after copying, run
+`docker exec -u 0 ddev-<project>-typo3-solr chown -R solr:solr /var/solr/data` (or add it to `solrctl`), then
+`ddev solrctl apply` again.
 
 ## Writing own checks
 

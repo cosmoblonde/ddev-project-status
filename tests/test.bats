@@ -63,7 +63,8 @@ PHP
   echo 'SKIP_CHECKS="30-database 60-custom"' >> .ddev/project-status/config
   run ddev project-status -q
   assert_success
-  assert_output "project-status: project is up to date (0 checks, 4 not applicable)."
+  # the number of not applicable checks grows with new bundled checks, the release test runs an older version
+  assert_output --regexp '^project-status: project is up to date \(0 checks, [0-9]+ not applicable\)\.$'
 
   run ddev project-commands
   assert_success
@@ -119,4 +120,25 @@ teardown() {
   assert_output --partial "[FAIL]  Datenbank ist leer"
   assert_output --partial "[SKIP]  Hier gibt es keine Assets"
   assert_output --partial "Nächste Schritte"
+}
+
+@test "TYPO3 Solr configured without the Solr add-on" {
+  set -eu -o pipefail
+  run ddev add-on get "${DIR}"
+  assert_success
+  run ddev restart -y
+  assert_success
+
+  # no Solr configuration: not applicable
+  run ddev project-status -v
+  assert_success
+  assert_output --partial "[SKIP]  No TYPO3 Solr configuration"
+
+  # configuration of ddev/ddev-typo3-solr present, but the add-on itself (docker-compose.typo3-solr.yaml) is missing
+  mkdir -p .ddev/typo3-solr
+  printf 'configsets:\n  - name: "ext_solr"\n    cores:\n      - name: "core_en"\n' > .ddev/typo3-solr/config.yaml
+  run ddev project-status
+  assert_success
+  assert_output --partial "[FAIL]  TYPO3 Solr is configured, but the add-on ddev/ddev-typo3-solr is not installed"
+  assert_output --partial "ddev add-on get ddev/ddev-typo3-solr"
 }

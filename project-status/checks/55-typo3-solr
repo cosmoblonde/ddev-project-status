@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+#ddev-generated
+# TYPO3 Solr (add-on ddev/ddev-typo3-solr): Solr answers and has all cores from .ddev/typo3-solr/config.yaml.
+# Read only: asks the Solr admin API for the core status. Creating cores is "ddev solrctl apply".
+
+source "$PROJECT_STATUS_DIR/lib/i18n.sh"
+
+# .ddev directory the runner reads from (live project copy or /mnt/ddev_config)
+ddev_dir=$(dirname "$PROJECT_STATUS_DIR")
+solr_config="$ddev_dir/typo3-solr/config.yaml"
+
+[[ -f "$solr_config" ]] || { t solr.no_config; exit 3; }
+
+if [[ ! -f "$ddev_dir/docker-compose.typo3-solr.yaml" ]]; then
+  t solr.no_addon
+  echo "next: ddev add-on get ddev/ddev-typo3-solr"
+  exit 2
+fi
+
+command -v yq >/dev/null || { t solr.no_yq; exit 1; }
+
+# the service is called typo3-solr in docker-compose.typo3-solr.yaml; SOLR_PORT is also honoured by solrctl
+response=$(curl -s -m 5 -w '\n%{http_code}' "http://${SOLR_HOST:-typo3-solr}:${SOLR_PORT:-8983}/solr/admin/cores?action=STATUS&wt=json")
+http_code=${response##*$'\n'}
+body=${response%$'\n'*}
+
+if [[ "$http_code" == "000" ]]; then
+  t solr.unreachable
+  echo "next: ddev restart"
+  exit 1
+fi
+
+# the container runs, but Solr itself did not start, e.g. because it cannot read solr.xml
+if [[ "$http_code" != "200" ]]; then
+  t solr.not_ready "$http_code"
+  echo "next: ddev logs -s typo3-solr"
+  exit 2
+fi
+
+read -ra wanted <<< "$(yq '.configsets[].cores[].name' "$solr_config" | tr '\n' ' ')"
+present=" $(yq -p json '.status | keys | .[]' <<< "$body" | tr '\n' ' ') "
+
+missing=()
+for core in "${wanted[@]}"; do
+  [[ "$present" == *" $core "* ]] || missing+=("$core")
+done
+
+if (( ${#missing[@]} )); then
+  t solr.cores_missing "${missing[*]}"
+  echo "next: ddev solrctl apply"
+  exit 1
+fi
+
+t solr.ok "${#wanted[@]}"
+exit 0
