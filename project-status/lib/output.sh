@@ -38,6 +38,8 @@ cb_load_config() {
   FRONTEND_DIR=""
   REQUIRED_DIRS=""
   REQUIRED_ASSETS=""
+  LARGE_FILE_MB="50"
+  LARGE_DIR_MB="500"
   COMPOSER_HINT="ddev composer install"
   NPM_HINT=""
   BUILD_HINT=""

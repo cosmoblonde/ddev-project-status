@@ -34,7 +34,8 @@ setup() {
   cd "${TESTDIR}"
   run ddev config --project-name="${PROJNAME}" --project-tld=ddev.site
   assert_success
-  run ddev start -y
+  # the Mutagen daemon outlives the test: if it inherits file descriptor 3, bats waits for it forever
+  run ddev start -y 3>&-
   assert_success
 }
 
@@ -60,7 +61,7 @@ PHP
   assert_output --partial "ddev my-command"
 
   # skip by config, quiet output
-  echo 'SKIP_CHECKS="30-database 60-custom"' >> .ddev/project-status/config
+  echo 'SKIP_CHECKS="30-database 57-sync-size 60-custom"' >> .ddev/project-status/config
   run ddev project-status -q
   assert_success
   # the number of not applicable checks grows with new bundled checks, the release test runs an older version
@@ -141,4 +142,90 @@ teardown() {
   assert_success
   assert_output --partial "[FAIL]  TYPO3 Solr is configured, but the add-on ddev/ddev-typo3-solr is not installed"
   assert_output --partial "ddev add-on get ddev/ddev-typo3-solr"
+}
+
+@test "Large files and folders in the Mutagen sync" {
+  set -eu -o pipefail
+  run ddev add-on get "${DIR}"
+  assert_success
+  mkdir -p dumps/old vendor/acme frontend/node_modules/acme public uploads
+  run ddev config --performance-mode=mutagen --docroot=public --upload-dirs=../uploads
+  assert_success
+  run ddev restart -y 3>&-
+  assert_success
+
+  echo 'LARGE_FILE_MB="2"' >> .ddev/project-status/config
+  for file in dumps/big.sql dumps/old/older.sql root.sql vendor/acme/big.bin frontend/node_modules/acme/big.bin public/big.bin uploads/big.bin; do
+    dd if=/dev/zero of="${file}" bs=1048576 count=3 2>/dev/null
+  done
+  # below the limit
+  dd if=/dev/zero of=dumps/small.sql bs=1048576 count=1 2>/dev/null
+  run ddev mutagen sync
+  assert_success
+
+  run ddev project-status
+  assert_success
+  assert_output --partial "[WARN]  Large files or folders in the Mutagen sync: "
+  assert_output --partial "dumps (3 MB)"
+  assert_output --partial "dumps/old (3 MB)"
+  assert_output --partial "root.sql (3 MB)"
+  # never the docroot itself, that would take the site out of the container
+  assert_output --partial "public/big.bin (3 MB)"
+  refute_output --partial "public ("
+  assert_output --partial "ddev mutagen reset"
+  refute_output --partial "vendor"
+  refute_output --partial "node_modules"
+  refute_output --partial "uploads"
+
+  # a large folder of small files, named at its topmost level and covering the large files below it
+  mkdir -p public/archive/a public/archive/b
+  for file in public/archive/a/1 public/archive/a/2 public/archive/b/1 public/archive/b/2; do
+    dd if=/dev/zero of="${file}" bs=1048576 count=2 2>/dev/null
+  done
+  echo 'LARGE_DIR_MB="5"' >> .ddev/project-status/config
+  run ddev mutagen sync
+  assert_success
+  run ddev project-status
+  assert_success
+  assert_output --partial "public/archive (8 MB)"
+  assert_output --partial "dumps (7 MB)"
+  refute_output --partial "public/archive/a"
+  refute_output --partial "dumps/old"
+
+  # the message names five entries, -v all of them
+  mkdir -p data1 data2 data3 data4 data5
+  for number in 1 2 3 4 5; do
+    dd if=/dev/zero of="data${number}/big.bin" bs=1048576 count=3 2>/dev/null
+  done
+  run ddev mutagen sync
+  assert_success
+  run ddev project-status
+  assert_success
+  assert_output --partial ", 4 more"
+  run ddev project-status -v
+  assert_success
+  assert_output --regexp 'data[1-5] \(3 MB\)'
+  rm -rf data1 data2 data3 data4 data5
+
+  # entries in mutagen.yml count at once; the files are still in the volume until "ddev mutagen reset"
+  awk '!/#ddev-generated/; /- "\/.git"/ { print "        - \"/dumps\""; print "        - \"*.sql\""; print "        - \"public/archive\""; print "        - \"big.bin\"" }' .ddev/mutagen/mutagen.yml > mutagen.yml.new
+  mv mutagen.yml.new .ddev/mutagen/mutagen.yml
+  run ddev mutagen sync
+  assert_success
+  run ddev project-status -v
+  assert_success
+  assert_output --partial "[OK]    No files over 2 MB or folders over 5 MB in the Mutagen sync"
+
+  # a limit that is no number must not reach the size calculation
+  echo 'LARGE_DIR_MB="big"' >> .ddev/project-status/config
+  run ddev mutagen sync
+  assert_success
+  run ddev project-status
+  assert_success
+  assert_output --partial 'LARGE_DIR_MB must be a whole number above 0, not "big"'
+
+  # without Mutagen the check does not apply
+  run ddev exec "DDEV_MUTAGEN_ENABLED=false /mnt/ddev_config/commands/web/project-status -v"
+  assert_success
+  assert_output --partial "[SKIP]  Project does not use Mutagen"
 }

@@ -109,6 +109,8 @@ Every value is available to the checks as environment variable.
 | `FRONTEND_DIR` | empty | directory containing `package.json`, empty: no frontend |
 | `REQUIRED_DIRS` | empty | folders that must exist; missing ones are created |
 | `REQUIRED_ASSETS` | empty | build results that must exist |
+| `LARGE_FILE_MB` | `50` | `57-sync-size` reports files above this size |
+| `LARGE_DIR_MB` | `500` | `57-sync-size` reports folders above this size |
 | `COMPOSER_HINT` | `ddev composer install` | next step for Composer problems |
 | `NPM_HINT` | `npm ci` in `FRONTEND_DIR` | next step for npm problems |
 | `BUILD_HINT` | `npm run build` in `FRONTEND_DIR` | next step for missing build results |
@@ -152,6 +154,7 @@ The `## Description:` lines of the commands cannot be translated: DDEV reads the
 | `40-folders` | folders from `REQUIRED_DIRS` exist, missing ones are created | no `REQUIRED_DIRS` |
 | `50-assets` | build results from `REQUIRED_ASSETS` exist | no `REQUIRED_ASSETS` |
 | `55-typo3-solr` | [ddev/ddev-typo3-solr](https://github.com/ddev/ddev-typo3-solr) is installed, Solr answers and has all cores from `.ddev/typo3-solr/config.yaml` (admin API, read only) | no `.ddev/typo3-solr/config.yaml` |
+| `57-sync-size` | no files over `LARGE_FILE_MB` and no folders over `LARGE_DIR_MB` in the Mutagen sync | project does not use Mutagen |
 
 Checks compare contents, not file times: with Mutagen, modification times do not reach the container.
 
@@ -164,6 +167,28 @@ by their owner only (mode `600`, as composer sometimes extracts them), the `solr
 them. `ddev logs -s typo3-solr` then shows "Could not load SOLR configuration". Fix: after copying, run
 `docker exec -u 0 ddev-<project>-typo3-solr chown -R solr:solr /var/solr/data` (or add it to `solrctl`), then
 `ddev solrctl apply` again.
+
+**Large files and folders in the Mutagen sync:** Mutagen keeps every synced file twice, on the host and in the Docker
+volume. `57-sync-size` reports the folders of files over `LARGE_FILE_MB`, typically database dumps, and folders over
+`LARGE_DIR_MB`, which catches many small files. A large folder is named at its topmost level. The docroot and folders
+above it are never named: excluding them would take the site out of the container, so large files directly in the
+docroot or the project root are named one by one.
+
+The check leaves out `vendor/`, `node_modules/`, `.git/`, the `upload_dirs` and everything under `ignore: paths:` in
+`.ddev/mutagen/mutagen.yml`; negated patterns (`!`) are not evaluated. The message names the five largest entries, `-v`
+lists all of them.
+
+A reported folder may hold data the site needs, so only exclude what the container can do without. To exclude a
+folder, remove the `#ddev-generated` line from `mutagen.yml`, otherwise DDEV overwrites the file, add the folder and run
+`ddev mutagen reset`:
+
+```yaml
+sync:
+  defaults:
+    ignore:
+      paths:
+        - "/cb_dumps"
+```
 
 ## Writing own checks
 
@@ -247,7 +272,7 @@ from `/var/www/html/.ddev/project-status`, which Mutagen keeps in sync. Changed 
 ## Tests
 
 `tests/test.bats` follows the [DDEV add-on template](https://github.com/ddev/ddev-addon-template): it creates an empty
-project, installs the add-on and checks the output, an own PHP check, `SKIP_CHECKS`, German output and own texts.
+project, installs the add-on and checks the output, an own PHP check, `SKIP_CHECKS`, German output, own texts and large data in the Mutagen sync.
 GitHub Actions run it on every push. Locally, with `bats-core`, `bats-assert`, `bats-file` and `bats-support`
 installed, in the add-on directory:
 

@@ -61,3 +61,11 @@ solr.unreachable = Solr does not answer
 solr.not_ready = Solr is running but not ready (HTTP %s), see the Solr log
 solr.cores_missing = Solr cores missing: %s
 solr.ok = All %s Solr cores present
+
+sync.no_mutagen = Project does not use Mutagen
+sync.bad_limit = %s must be a whole number above 0, not "%s"
+sync.no_yq = Sync size cannot be checked (yq not available)
+sync.ok = No files over %s MB or folders over %s MB in the Mutagen sync
+sync.large = Large files or folders in the Mutagen sync: %s
+sync.more = %s more
+sync.next = If the container does not need them: add them under ignore: paths: in .ddev/mutagen/mutagen.yml and remove #ddev-generated there

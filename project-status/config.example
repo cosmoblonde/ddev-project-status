@@ -32,6 +32,10 @@ REQUIRED_DIRS=""
 # Build results that must exist, checked by checks/50-assets
 REQUIRED_ASSETS=""
 
+# Files and folders above these sizes in MB are reported by checks/57-sync-size (projects with Mutagen only)
+LARGE_FILE_MB="50"
+LARGE_DIR_MB="500"
+
 # Commands shown as next step. Empty NPM_HINT / BUILD_HINT: npm ci / npm run build in FRONTEND_DIR.
 # Projects with an own update command can point all three to it, e.g. "ddev project-update".
 COMPOSER_HINT="ddev composer install"
