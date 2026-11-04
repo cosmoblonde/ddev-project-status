@@ -34,7 +34,8 @@ setup() {
   cd "${TESTDIR}"
   run ddev config --project-name="${PROJNAME}" --project-tld=ddev.site
   assert_success
-  run ddev start -y
+  # the Mutagen daemon outlives the test: if it inherits file descriptor 3, bats waits for it forever
+  run ddev start -y 3>&-
   assert_success
 }
 
@@ -150,7 +151,7 @@ teardown() {
   mkdir -p dumps/old vendor/acme frontend/node_modules/acme public uploads
   run ddev config --performance-mode=mutagen --docroot=public --upload-dirs=../uploads
   assert_success
-  run ddev restart -y
+  run ddev restart -y 3>&-
   assert_success
 
   echo 'LARGE_FILE_MB="2"' >> .ddev/project-status/config
