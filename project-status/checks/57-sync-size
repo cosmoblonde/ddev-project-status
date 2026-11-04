@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+#ddev-generated
+# Sync size: Mutagen keeps every synced file twice, on the host and in the volume, so large data costs disk space.
+# Read only: lists files over LARGE_FILE_MB and folders over LARGE_DIR_MB. Excluding them is up to the project
+# (mutagen.yml), only the project knows what the container needs.
+
+source "$PROJECT_STATUS_DIR/lib/i18n.sh"
+
+# how many entries the message names, -v shows all of them
+max_entries=5
+
+# .ddev directory the runner reads from (live project copy or /mnt/ddev_config)
+ddev_dir=$(dirname "$PROJECT_STATUS_DIR")
+mutagen_config="$ddev_dir/mutagen/mutagen.yml"
+
+[[ "${DDEV_MUTAGEN_ENABLED:-}" == "true" ]] || { t sync.no_mutagen; exit 3; }
+[[ "$LARGE_FILE_MB" =~ ^[1-9][0-9]*$ ]] || { t sync.bad_limit LARGE_FILE_MB "$LARGE_FILE_MB"; exit 1; }
+[[ "$LARGE_DIR_MB" =~ ^[1-9][0-9]*$ ]] || { t sync.bad_limit LARGE_DIR_MB "$LARGE_DIR_MB"; exit 1; }
+command -v yq >/dev/null || { t sync.no_yq; exit 1; }
+
+# generated or needed in the container anyway
+prune=(-name .git -o -name vendor -o -name node_modules)
+
+# DDEV excludes upload_dirs from the sync without listing them in mutagen.yml
+IFS=, read -ra upload_dirs <<< "${DDEV_FILES_DIRS:-}"
+for dir in "${upload_dirs[@]}"; do
+  prune+=(-o -path "./${dir#/var/www/html/}")
+done
+
+# Mutagen patterns: leading slash = from the project root, otherwise at any level. Negations (!) are not evaluated.
+if [[ -f "$mutagen_config" ]]; then
+  while IFS= read -r pattern; do
+    pattern=${pattern%/}
+    case "$pattern" in
+      ''|'!'*) ;;
+      /*)      prune+=(-o -path ".$pattern") ;;
+      */*)     prune+=(-o -path "*/$pattern") ;;
+      *)       prune+=(-o -name "$pattern") ;;
+    esac
+  done < <(yq '(.sync.defaults.ignore.paths // [])[]' "$mutagen_config")
+fi
+
+# Entries with size, largest first. A large folder is named at its topmost level and covers everything below it.
+# Excluding the docroot or a folder above it would take the site out of the container, so these are never named:
+# large files directly in there stand for themselves, like those in the project root.
+entries=$(find . \( "${prune[@]}" \) -prune -o -type f -printf '%s\t%P\n' | awk -F'\t' \
+  -v file_limit=$(( LARGE_FILE_MB * 1048576 )) -v dir_limit=$(( LARGE_DIR_MB * 1048576 )) -v docroot="${DDEV_DOCROOT:-}" '
+  function holds_docroot(folder) {
+    return docroot != "" && index(docroot "/", folder "/") == 1
+  }
+  function inside_large(path) {
+    while (sub(/\/[^\/]*$/, "", path)) {
+      if (path in large_dirs) return 1
+    }
+    return 0
+  }
+  {
+    parent = $2
+    if (!sub(/\/[^\/]*$/, "", parent)) parent = ""
+    folder = $2
+    while (sub(/\/[^\/]*$/, "", folder)) bytes[folder] += $1
+    if ($1 > file_limit) {
+      entry = (parent == "" || holds_docroot(parent)) ? $2 : parent
+      large_files[entry] += $1
+    }
+  }
+  END {
+    for (folder in bytes) {
+      if (bytes[folder] > dir_limit && !holds_docroot(folder)) large_dirs[folder] = bytes[folder]
+    }
+    for (folder in large_dirs) {
+      if (!inside_large(folder)) printf "%.0f\t%s\n", large_dirs[folder] / 1048576, folder
+    }
+    for (entry in large_files) {
+      if (!(entry in large_dirs) && !inside_large(entry)) printf "%.0f\t%s\n", large_files[entry] / 1048576, entry
+    }
+  }
+' | sort -rn)
+
+if [[ -z "$entries" ]]; then
+  t sync.ok "$LARGE_FILE_MB" "$LARGE_DIR_MB"
+  exit 0
+fi
+
+list=()
+while IFS=$'\t' read -r size entry; do
+  list+=("$entry ($size MB)")
+done <<< "$entries"
+
+shown=$(printf '%s, ' "${list[@]:0:max_entries}")
+shown=${shown%, }
+if (( ${#list[@]} > max_entries )); then
+  shown+=", $(t sync.more $(( ${#list[@]} - max_entries )))"
+fi
+
+t sync.large "$shown"
+printf '%s\n' "${list[@]}" >&2
+echo "next: $(t sync.next)"
+echo "next: ddev mutagen reset"
+exit 1

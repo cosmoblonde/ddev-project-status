@@ -18,6 +18,7 @@ project_files:
   - project-status/checks/40-folders
   - project-status/checks/50-assets
   - project-status/checks/55-typo3-solr
+  - project-status/checks/57-sync-size
 
 ddev_version_constraint: '>= v1.24.10'
 
