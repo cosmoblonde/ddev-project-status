@@ -107,6 +107,20 @@ teardown() {
   health_checks
 }
 
+@test "update from v1.3.0, where project-status was a web command" {
+  set -eu -o pipefail
+  run ddev add-on get "${GITHUB_REPO}" --version v1.3.0
+  assert_success
+  assert_file_exist .ddev/commands/web/project-status
+  run ddev add-on get "${DIR}"
+  assert_success
+  assert_file_not_exist .ddev/commands/web/project-status
+  assert_file_exist .ddev/commands/host/project-status
+  run ddev restart -y
+  assert_success
+  assert_output --partial "project-status:"
+}
+
 @test "German output and own texts" {
   set -eu -o pipefail
   run ddev add-on get "${DIR}"
@@ -160,6 +174,69 @@ SH
   [WARN]  second check reports something
           ddev restart
 "
+}
+
+@test "Git branch and upstream" {
+  set -eu -o pipefail
+  run ddev add-on get "${DIR}"
+  assert_success
+  run ddev restart -y
+  assert_success
+
+  run ddev project-status -v
+  assert_success
+  assert_output --partial "[SKIP]  No git repository"
+
+  # a local bare repository as origin keeps the test offline
+  g() { git -c user.name=test -c user.email=test@example.com "$@"; }
+  origin="${BATS_TEST_TMPDIR}/origin.git"
+  g init -q --bare -b main "${origin}"
+  g init -q -b main
+  g commit -q --allow-empty -m one
+  g remote add origin "${origin}"
+  g push -q -u origin main
+  g branch develop
+  g push -q -u origin develop
+  g fetch -q origin
+
+  run ddev project-status -i
+  assert_success
+  assert_output --partial "[WARN]  Working on branch main, which is not meant for development"
+  assert_output --partial "git switch -c feature/<name>"
+  assert_output --regexp 'Branch +main'
+
+  g switch -q -c feature/test
+  run ddev project-status -v
+  assert_success
+  assert_output --partial "[OK]    On branch feature/test, main, develop in step with the upstream (as of the last fetch)"
+
+  # main behind: pushed from another clone and fetched; develop ahead: committed and not pushed
+  g clone -q "${origin}" "${BATS_TEST_TMPDIR}/other"
+  g -C "${BATS_TEST_TMPDIR}/other" commit -q --allow-empty -m two
+  g -C "${BATS_TEST_TMPDIR}/other" push -q origin main
+  g fetch -q origin
+  g switch -q develop
+  g commit -q --allow-empty -m three
+  g switch -q feature/test
+  run ddev project-status
+  assert_success
+  assert_output --partial "[WARN]  main is 1 commit(s) behind origin/main – develop is 1 commit(s) ahead of origin/develop, not pushed"
+  assert_output --partial "git fetch origin main:main"
+  assert_output --partial "git log --oneline origin/develop..develop"
+
+  # the comparison is only as fresh as the last fetch
+  touch -t 202001010000 .git/FETCH_HEAD
+  run ddev project-status
+  assert_success
+  assert_output --regexp '\[INFO\]  Comparison with the upstream as of the last fetch [0-9]+ days ago: git fetch'
+
+  # own lists in the config; TRACKED_BRANCHES is read on the host as well
+  echo 'PROTECTED_BRANCHES="feature/test"' >> .ddev/project-status/config
+  echo 'TRACKED_BRANCHES="develop"' >> .ddev/project-status/config
+  run ddev project-status
+  assert_success
+  assert_output --partial "[WARN]  Working on branch feature/test, which is not meant for development – develop is 1 commit(s) ahead"
+  refute_output --partial "main is 1 commit(s) behind"
 }
 
 @test "TYPO3 Solr configured without the Solr add-on" {
@@ -264,7 +341,7 @@ SH
   assert_output --partial 'LARGE_DIR_MB must be a whole number above 0, not "big"'
 
   # without Mutagen the check does not apply
-  run ddev exec "DDEV_MUTAGEN_ENABLED=false /mnt/ddev_config/commands/web/project-status -v"
+  run ddev exec "DDEV_MUTAGEN_ENABLED=false /mnt/ddev_config/project-status/runner -v"
   assert_success
   assert_output --partial "[SKIP]  Project does not use Mutagen"
 }

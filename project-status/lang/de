@@ -18,6 +18,7 @@ info.webserver = Webserver
 info.docroot = Docroot
 info.composer = Composer
 info.node = Node
+info.branch = Branch
 
 summary.no_checks = project-status: keine Prüfungen hinterlegt (%s).
 summary.ok = project-status: Projekt ist auf aktuellem Stand (%s Prüfungen).
@@ -26,6 +27,19 @@ summary.problems = project-status: %s Problem(e) gefunden.
 summary.problems_hint = project-status: %s Problem(e) gefunden, alle Prüfungen mit "ddev project-status -v".
 
 commands.help = Hilfe zu einem Befehl: ddev <befehl> -h
+
+git.no_git = git ist nicht verfügbar
+git.no_repo = Kein Git-Repository
+git.ok = Auf Branch %s, %s auf Stand des Upstreams (Stand des letzten fetch)
+git.ok_branch = Auf Branch %s
+git.detached = losgelöster HEAD bei %s
+git.protected = Arbeit auf Branch %s, der nicht für die Entwicklung gedacht ist
+git.behind = %s liegt %s Commit(s) hinter %s
+git.ahead = %s liegt %s Commit(s) vor %s, nicht gepusht
+git.diverged = %s und %s sind auseinandergelaufen (%s und %s Commit(s))
+git.gone = %s folgt %s, den es nicht mehr gibt
+git.never_fetched = Vergleich mit dem Upstream ohne bisherigen fetch: git fetch
+git.fetch_old = Vergleich mit dem Upstream auf Stand des letzten fetch vor %s Tagen: git fetch
 
 composer.no_json = Keine composer.json in %s
 composer.no_vendor = vendor/ fehlt

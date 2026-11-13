@@ -4,14 +4,17 @@ name: project-status
 # "ddev add-on get" and removed by "ddev add-on remove". Own checks and project-status/config are not listed,
 # so updates and removal leave them alone.
 project_files:
-  - commands/web/project-status
+  - commands/host/project-status
   - commands/web/project-commands
   - config.project-status.yaml
+  - project-status/runner
   - project-status/lib/output.sh
   - project-status/lib/i18n.sh
+  - project-status/lib/git.sh
   - project-status/lang/en
   - project-status/lang/de
   - project-status/config.example
+  - project-status/checks/05-git
   - project-status/checks/10-composer
   - project-status/checks/15-composer-lock
   - project-status/checks/20-npm
@@ -26,8 +29,13 @@ ddev_version_constraint: '>= v1.24.10'
 # post_install_actions are executed in the context of the target project's .ddev directory.
 post_install_actions:
   - |
+    #ddev-description:Remove the web command project-status of v1.x, it is a host command since v2.0.0
+    if [ -f commands/web/project-status ] && grep -q '#ddev-generated' commands/web/project-status; then
+      rm commands/web/project-status
+    fi
+  - |
     #ddev-description:Make commands and checks executable
-    chmod +x commands/web/project-status commands/web/project-commands project-status/checks/*
+    chmod +x commands/host/project-status commands/web/project-commands project-status/runner project-status/checks/*
   - |
     #ddev-description:Create project-status/config from config.example if it does not exist yet
     if [ ! -f project-status/config ]; then

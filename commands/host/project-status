@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+#ddev-generated
+
+## Description: Check project state without installing anything (checks in .ddev/project-status/checks/)
+## Usage: project-status [-v] [-i] [-c] [-a] [-q]
+## Example: "ddev project-status" (problems only), "ddev project-status -v" (all checks), "ddev project-status -i" (with project data), "ddev project-status -a" (everything)
+## AutocompleteTerms: ["-v", "--verbose", "-i", "--info", "-c", "--commands", "-a", "--all", "-q", "--quiet"]
+
+# Runs on the host because the web container often has no .git: DDEV leaves it out of the Mutagen sync and only
+# bind-mounts it where possible, never with no_bind_mounts. Collects the git facts (lib/git.sh, read only, no fetch),
+# then runs the checks in the web container (project-status/runner) and passes all options on.
+# Must work with bash 3.2 (macOS). This script must never fail the start, so it always exits with 0.
+
+STATUS_DIR="${DDEV_APPROOT:-.}/.ddev/project-status"
+
+hook=false
+for arg in "$@"; do
+  [[ "$arg" == "--hook" ]] && hook=true
+done
+
+# the hook runs while the project starts; a manual call needs the running web container
+if ! $hook && [[ -n "${DDEV_PROJECT_STATUS:-}" && "$DDEV_PROJECT_STATUS" != "running" ]]; then
+  echo "project-status: project ${DDEV_PROJECT:-} is not running, start it with \"ddev start\"."
+  exit 0
+fi
+
+# value of a setting in the config, read without running the file on the host
+config_value() {
+  local value
+  value=$(sed -n "s/^$1=\"\(.*\)\"[[:space:]]*\$/\1/p" "$STATUS_DIR/config" 2>/dev/null | tail -n 1)
+  echo "${value:-$2}"
+}
+
+# shellcheck disable=SC1091
+if source "$STATUS_DIR/lib/git.sh" 2>/dev/null; then
+  # word splitting is intended: TRACKED_BRANCHES="main develop"
+  # shellcheck disable=SC2046
+  cb_git_facts "${DDEV_APPROOT:-.}" $(config_value TRACKED_BRANCHES "main develop")
+fi
+
+# the container does not see the host environment: pass the git facts and the color settings
+env_args=()
+for name in PROJECT_STATUS_GIT_STATE PROJECT_STATUS_GIT_BRANCH PROJECT_STATUS_GIT_HEAD PROJECT_STATUS_GIT_BRANCHES \
+    PROJECT_STATUS_GIT_FETCHED NO_COLOR PROJECT_STATUS_COLOR; do
+  [[ -n "${!name:-}" ]] && env_args+=("$name=${!name}")
+done
+
+# the live synced project copy first, so that changes count without restart; /mnt/ddev_config is filled on start
+# shellcheck disable=SC2016
+ddev exec --raw -- env "${env_args[@]}" bash -c '
+  runner=/var/www/html/.ddev/project-status/runner
+  [[ -x "$runner" ]] || runner=/mnt/ddev_config/project-status/runner
+  exec "$runner" "$@"
+' project-status "$@"
+
+exit 0

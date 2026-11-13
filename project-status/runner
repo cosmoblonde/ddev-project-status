@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
 #ddev-generated
-
-## Description: Check project state without installing anything (checks in .ddev/project-status/checks/)
-## Usage: project-status [-v] [-i] [-c] [-a] [-q]
-## Example: "ddev project-status" (problems only), "ddev project-status -v" (all checks), "ddev project-status -i" (with project data), "ddev project-status -a" (everything)
-## AutocompleteTerms: ["-v", "--verbose", "-i", "--info", "-c", "--commands", "-a", "--all", "-q", "--quiet"]
+# Runs the checks in the web container. Started by the host command "ddev project-status" (commands/host/), which
+# passes the git facts of the host as PROJECT_STATUS_GIT_* variables; without them, git is tried in the container.
 
 # Options (short options can be combined, e.g. -iv):
 #   -v, --verbose    show passed and skipped checks, plus stderr of every check
@@ -41,6 +38,13 @@ if ! source "$STATUS_DIR/lib/output.sh" 2>/dev/null; then
   exit 0
 fi
 cb_load_config
+
+# runner called directly, not through the host command: git facts from the container, if .git is visible there
+if [[ -z "${PROJECT_STATUS_GIT_STATE:-}" ]] && source "$STATUS_DIR/lib/git.sh" 2>/dev/null; then
+  # word splitting is intended: TRACKED_BRANCHES="main develop"
+  # shellcheck disable=SC2086
+  cb_git_facts /var/www/html $TRACKED_BRANCHES
+fi
 
 verbose=false
 info=false
@@ -200,6 +204,9 @@ show_info() {
     frontend="$FRONTEND_DIR"
     command -v node >/dev/null && frontend="$(node -v 2>/dev/null) / npm $(npm -v 2>/dev/null)  ($FRONTEND_DIR)"
     cb_row "$(t info.node)" "$frontend"
+  fi
+  if [[ "${PROJECT_STATUS_GIT_STATE:-}" == "ok" ]]; then
+    cb_row "$(t info.branch)" "${PROJECT_STATUS_GIT_BRANCH:-$(t git.detached "${PROJECT_STATUS_GIT_HEAD:-}")}"
   fi
 }
 
