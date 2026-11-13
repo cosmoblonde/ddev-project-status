@@ -119,6 +119,19 @@ teardown() {
   run ddev restart -y
   assert_success
   assert_output --partial "project-status:"
+
+  # an own copy from before the add-on is never deleted, but reported
+  printf '#!/bin/bash\n## Description: own script\n' > .ddev/commands/web/project-status
+  run ddev add-on get "${DIR}"
+  assert_success
+  assert_output --partial "WARNING: .ddev/commands/web/project-status has no #ddev-generated line and was kept."
+  assert_file_exist .ddev/commands/web/project-status
+
+  # a hook in config.yaml from the time before the add-on
+  printf 'hooks:\n  post-start:\n    - exec: ddev project-status\n' >> .ddev/config.yaml
+  run ddev add-on get "${DIR}"
+  assert_success
+  assert_output --partial "WARNING: .ddev/config.yaml has a hook on project-status or project-commands."
 }
 
 @test "German output and own texts" {

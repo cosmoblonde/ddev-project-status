@@ -59,7 +59,9 @@ The `post-start` hook comes with `config.project-status.yaml`. DDEV adds hooks f
 
 Updating from v1.x: `ddev add-on get` removes the former web command `commands/web/project-status`, the command is a
 host command since v2.0.0. Commit the removal together with the new files. A copy without `#ddev-generated` is left
-alone and must be deleted by hand, otherwise DDEV finds two commands of the same name.
+alone and must be deleted by hand, otherwise DDEV finds two commands of the same name. The same goes for hooks on
+`project-status` or `project-commands` in `.ddev/config.yaml`: they run in the web container, where `ddev` is only a
+stub, so remove them. `ddev add-on get` warns about both.
 
 Remove with `ddev add-on remove project-status`. Own checks, own texts and the `config` stay in place.
 
