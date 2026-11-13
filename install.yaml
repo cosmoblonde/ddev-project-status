@@ -13,6 +13,7 @@ project_files:
   - project-status/lang/de
   - project-status/config.example
   - project-status/checks/10-composer
+  - project-status/checks/15-composer-lock
   - project-status/checks/20-npm
   - project-status/checks/30-database
   - project-status/checks/40-folders

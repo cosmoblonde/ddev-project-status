@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+#ddev-generated
+# Composer: composer.lock matches composer.json and the PHP platform of the web container.
+# Catches a composer.json changed by git pull, a branch switch or a copy from the server without the matching
+# composer.lock, and a composer.lock resolved for another PHP version or other extensions. Both pass
+# "composer install" unnoticed and only fail on the next "composer update". No network access.
+
+source "$PROJECT_STATUS_DIR/lib/i18n.sh"
+
+[[ -f "$COMPOSER_DIR/composer.json" ]] || { t composer.no_json "$COMPOSER_DIR"; exit 3; }
+[[ -f "$COMPOSER_DIR/composer.lock" ]] || { t composer.no_lock "$COMPOSER_DIR"; exit 3; }
+
+problems=()
+code=0
+
+# The content hash in composer.lock no longer matches composer.json
+if composer validate --no-check-all --no-check-publish --no-check-version --no-interaction \
+    --working-dir="$COMPOSER_DIR" 2>&1 | grep -q "lock file is not up to date"; then
+  problems+=("$(t composer.lock_stale)")
+  echo "next: ddev composer update --dry-run"
+  code=1
+fi
+
+# Requirements of the locked packages against the real platform; config.platform is ignored here on purpose
+failed=$(composer check-platform-reqs --lock --format=json --no-interaction --working-dir="$COMPOSER_DIR" 2>/dev/null \
+  | php -r '
+    $entries = json_decode(stream_get_contents(STDIN), true) ?: [];
+    $failed = [];
+    foreach ($entries as $entry) {
+        if (($entry["status"] ?? "") === "success" || empty($entry["failed_requirement"])) {
+            continue;
+        }
+        $requirement = $entry["failed_requirement"];
+        $failed[] = sprintf("%s %s (%s: %s)", $entry["name"], $requirement["constraint"], $requirement["source"], $entry["version"]);
+    }
+    echo implode(", ", $failed);
+  ')
+if [[ -n "$failed" ]]; then
+  problems+=("$(t composer.lock_platform "$failed")")
+  echo "next: ddev composer check-platform-reqs --lock"
+  code=2
+fi
+
+# config.platform.php fakes a PHP version for "composer update"; harmless if it is the production version on purpose
+platform_php=$(php -r '
+  $json = json_decode(file_get_contents($argv[1]), true);
+  echo $json["config"]["platform"]["php"] ?? "";
+' "$COMPOSER_DIR/composer.json" 2>/dev/null)
+php_version=$(php -r 'echo PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION;')
+if [[ -n "$platform_php" && "$(cut -d. -f1-2 <<< "$platform_php")" != "$php_version" ]]; then
+  echo "info: $(t composer.platform_differs "$platform_php" "$php_version" "$platform_php")"
+fi
+
+if (( ${#problems[@]} )); then
+  # one message line per check: join the problems
+  message="${problems[0]}"
+  for problem in "${problems[@]:1}"; do
+    message+=" – $problem"
+  done
+  echo "$message"
+  exit "$code"
+fi
+
+t composer.lock_ok
+exit 0

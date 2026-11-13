@@ -31,6 +31,12 @@ composer.no_json = Keine composer.json in %s
 composer.no_vendor = vendor/ fehlt
 composer.ok = Composer-Pakete passen zur composer.lock
 composer.outdated = Composer-Pakete passen nicht zur composer.lock
+composer.not_comparable = vendor/ nicht vergleichbar: composer.lock fehlen Pakete aus der composer.json
+composer.no_lock = Keine composer.lock in %s
+composer.lock_ok = composer.lock passt zur composer.json und zur PHP-Plattform
+composer.lock_stale = composer.lock passt nicht zur composer.json
+composer.lock_platform = composer.lock passt nicht zur PHP-Plattform: %s
+composer.platform_differs = composer.json setzt config.platform.php %s, DDEV nutzt PHP %s: composer update löst für %s auf
 
 npm.no_frontend = Kein FRONTEND_DIR konfiguriert
 npm.no_package_json = Keine package.json in %s

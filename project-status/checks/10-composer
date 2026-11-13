@@ -13,10 +13,18 @@ if [[ ! -d "$COMPOSER_DIR/vendor" ]]; then
   exit 2
 fi
 
-if composer install --dry-run --no-interaction --working-dir="$COMPOSER_DIR" 2>&1 \
-    | grep -q "Nothing to install, update or remove"; then
+output=$(composer install --dry-run --no-interaction --working-dir="$COMPOSER_DIR" 2>&1)
+
+if grep -q "Nothing to install, update or remove" <<< "$output"; then
   t composer.ok
   exit 0
+fi
+
+# composer.json requires a package that composer.lock does not contain: "composer install" cannot fix that,
+# 15-composer-lock reports the outdated composer.lock
+if grep -q "is not present in the lock file" <<< "$output"; then
+  t composer.not_comparable
+  exit 3
 fi
 
 t composer.outdated

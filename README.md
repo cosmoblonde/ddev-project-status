@@ -148,7 +148,8 @@ The `## Description:` lines of the commands cannot be translated: DDEV reads the
 
 | Check | Checks | Not applicable (SKIP) when |
 |-------|--------|----------------------------|
-| `10-composer` | `vendor/` exists and matches `composer.lock` (`composer install --dry-run`, no network) | no `composer.json` |
+| `10-composer` | `vendor/` exists and matches `composer.lock` (`composer install --dry-run`, no network) | no `composer.json`; `composer.lock` lacks packages from `composer.json` (see `15-composer-lock`) |
+| `15-composer-lock` | `composer.lock` matches `composer.json` and the PHP version and extensions of the web container (`composer validate`, `composer check-platform-reqs --lock`, no network) | no `composer.json` or no `composer.lock` |
 | `20-npm` | `node_modules/` matches `package-lock.json`; detects npm >= 7 and npm 6 (`lockfileVersion` 1) | no `FRONTEND_DIR` or no `package.json` |
 | `30-database` | database contains tables (MySQL/MariaDB or PostgreSQL, read only) | – |
 | `40-folders` | folders from `REQUIRED_DIRS` exist, missing ones are created | no `REQUIRED_DIRS` |
@@ -159,6 +160,20 @@ The `## Description:` lines of the commands cannot be translated: DDEV reads the
 Checks compare contents, not file times: with Mutagen, modification times do not reach the container.
 
 Own checks start at `60-`, so bundled checks added later never collide with them.
+
+**composer.lock out of step:** `composer install` installs from `composer.lock` and only warns when `composer.json`
+changed since, so `vendor/` can match an outdated lock file. That happens after a `git pull` or branch switch that
+changes `composer.json` alone, or when `composer.json` or `composer.lock` is copied from a server. The conflict then
+only shows on the next `composer update`. `15-composer-lock` reports it beforehand:
+
+- **does not match composer.json** (WARN): the content hash in `composer.lock` is outdated. `ddev composer update
+  --dry-run` shows what an update would change; if the change to `composer.json` was not intended, check out the
+  matching `composer.lock` or `composer.json` instead.
+- **does not fit the PHP platform** (FAIL): locked packages need another PHP version or a missing extension, typical
+  for a `composer.lock` resolved on a server. `config.platform` is ignored here on purpose, the check compares with the
+  real web container. Fix: `php_version` in `.ddev/config.yaml`, the extension, or a `composer update` for this platform.
+- **config.platform.php differs** (INFO): `composer.json` sets a PHP version for resolving that is not the one DDEV
+  runs. Fine if it is the production version on purpose; then DDEV should usually run the same version.
 
 **TYPO3 Solr "running but not ready":** the Solr container runs, but Solr itself did not start, so every request
 fails and `ddev solrctl apply` cannot create cores. A common cause is file permissions: `solrctl` copies `solr.xml`,
