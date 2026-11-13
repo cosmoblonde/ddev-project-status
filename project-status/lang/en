@@ -18,6 +18,7 @@ info.webserver = Web server
 info.docroot = Docroot
 info.composer = Composer
 info.node = Node
+info.branch = Branch
 
 summary.no_checks = project-status: no checks found (%s).
 summary.ok = project-status: project is up to date (%s checks).
@@ -26,6 +27,19 @@ summary.problems = project-status: %s problem(s) found.
 summary.problems_hint = project-status: %s problem(s) found, all checks with "ddev project-status -v".
 
 commands.help = Help for a command: ddev <command> -h
+
+git.no_git = git is not available
+git.no_repo = No git repository
+git.ok = On branch %s, %s in step with the upstream (as of the last fetch)
+git.ok_branch = On branch %s
+git.detached = detached HEAD at %s
+git.protected = Working on branch %s, which is not meant for development
+git.behind = %s is %s commit(s) behind %s
+git.ahead = %s is %s commit(s) ahead of %s, not pushed
+git.diverged = %s and %s have diverged (%s and %s commit(s))
+git.gone = %s tracks %s, which no longer exists
+git.never_fetched = Comparison with the upstream without any fetch so far: git fetch
+git.fetch_old = Comparison with the upstream as of the last fetch %s days ago: git fetch
 
 composer.no_json = No composer.json in %s
 composer.no_vendor = vendor/ is missing

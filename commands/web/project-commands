@@ -15,7 +15,7 @@ STATUS_DIR="$DDEV_DIR/project-status"
 if [[ -z "${PROJECT_STATUS_DDEV_DIR:-}" && -d /var/www/html/.ddev/project-status ]]; then
   STATUS_DIR=/var/www/html/.ddev/project-status
 fi
-COMMAND_DIR="$DDEV_DIR/commands/web"
+COMMAND_DIRS=("$DDEV_DIR/commands/web" "$DDEV_DIR/commands/host")
 SELF_NAME="$(basename "$0")"
 
 source "$STATUS_DIR/lib/output.sh"
@@ -27,7 +27,8 @@ with_header=true
 # Collect commands
 declare -a COMMANDS=()
 
-for file in "$COMMAND_DIR"/*; do
+# web and host commands, e.g. project-status itself runs on the host
+for file in "${COMMAND_DIRS[0]}"/* "${COMMAND_DIRS[1]}"/*; do
   [ -f "$file" ] || continue
 
   cmd="$(basename "$file")"

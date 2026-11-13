@@ -57,6 +57,12 @@ Then adjust `.ddev/project-status/config` and commit the `.ddev` directory.
 The `post-start` hook comes with `config.project-status.yaml`. DDEV adds hooks from `config.*.yaml` to those in
 `config.yaml`, so no entry in `config.yaml` is needed and existing hooks keep working.
 
+Updating from v1.x: `ddev add-on get` removes the former web command `commands/web/project-status`, the command is a
+host command since v2.0.0. Commit the removal together with the new files. A copy without `#ddev-generated` is left
+alone and must be deleted by hand, otherwise DDEV finds two commands of the same name. The same goes for hooks on
+`project-status` or `project-commands` in `.ddev/config.yaml`: they run in the web container, where `ddev` is only a
+stub, so remove them. `ddev add-on get` warns about both.
+
 Remove with `ddev add-on remove project-status`. Own checks, own texts and the `config` stay in place.
 
 ## Commands
@@ -64,7 +70,7 @@ Remove with `ddev add-on remove project-status`. Own checks, own texts and the `
 ```bash
 ddev project-status      # problems and next steps only
 ddev project-status -v   # all checks including not applicable ones, plus stderr of the checks
-ddev project-status -i   # also project data (URL, TYPO3, PHP, database, web server, Node)
+ddev project-status -i   # also project data (URL, TYPO3, PHP, database, web server, Node, branch)
 ddev project-status -c   # also the list of project commands
 ddev project-status -a   # everything, same as -v -i -c
 ddev project-status -q   # summary line only
@@ -78,18 +84,25 @@ is set in the `config` (`HOOK`, `HOOK_OPTIONS`).
 
 ```text
 .ddev/
-├── config.project-status.yaml   # post-start hook
+├── config.project-status.yaml   # post-start hook (exec-host)
+├── commands/host/
+│   └── project-status           # reads git on the host, starts the runner in the web container
 ├── commands/web/
-│   ├── project-status
 │   └── project-commands
 └── project-status/
     ├── config                   # project settings, never overwritten by updates
     ├── config.example           # template with all settings
+    ├── runner                   # runs the checks in the web container
     ├── lib/output.sh            # shared output
     ├── lib/i18n.sh              # text catalogs, function t
+    ├── lib/git.sh               # git facts, on the host or as fallback in the container
     ├── lang/                    # text catalogs en, de and own *.custom
     └── checks/                  # bundled and own checks
 ```
+
+`project-status` is a host command because the git check needs the repository, which the web container often does
+not see. The host command needs `bash` (on Windows Git Bash, which DDEV requires for host commands anyway); the checks
+still run in the web container.
 
 Files containing `#ddev-generated` are replaced by a later `ddev add-on get`. To change a bundled check, either
 remove that marker (the file is then kept on updates) or, better, write an own check and switch the bundled one off
@@ -114,6 +127,9 @@ Every value is available to the checks as environment variable.
 | `REQUIRED_ASSETS` | empty | build results that must exist |
 | `LARGE_FILE_MB` | `50` | `57-sync-size` reports files above this size |
 | `LARGE_DIR_MB` | `500` | `57-sync-size` reports folders above this size |
+| `PROTECTED_BRANCHES` | `main preview` | `05-git` warns when work happens on one of these branches |
+| `TRACKED_BRANCHES` | `main develop` | `05-git` compares these branches with their upstream; also read on the host, so keep the plain `KEY="value"` form |
+| `GIT_FETCH_DAYS` | `7` | `05-git` hints at `git fetch` when the last fetch is older, `0`: no hint |
 | `COMPOSER_HINT` | `ddev composer install` | next step for Composer problems |
 | `NPM_HINT` | `npm ci` in `FRONTEND_DIR` | next step for npm problems |
 | `BUILD_HINT` | `npm run build` in `FRONTEND_DIR` | next step for missing build results |
@@ -151,6 +167,7 @@ The `## Description:` lines of the commands cannot be translated: DDEV reads the
 
 | Check | Checks | Not applicable (SKIP) when |
 |-------|--------|----------------------------|
+| `05-git` | the current branch is not in `PROTECTED_BRANCHES`, the branches from `TRACKED_BRANCHES` are neither behind nor ahead of their upstream (as of the last fetch, no network) | no git, or the project is no git repository |
 | `10-composer` | `vendor/` exists and matches `composer.lock` (`composer install --dry-run`, no network) | no `composer.json`; `composer.lock` lacks packages from `composer.json` (see `15-composer-lock`) |
 | `15-composer-lock` | `composer.lock` matches `composer.json` and the PHP version and extensions of the web container (`composer validate`, `composer check-platform-reqs --lock`, no network) | no `composer.json` or no `composer.lock` |
 | `20-npm` | `node_modules/` matches `package-lock.json`; detects npm >= 7 and npm 6 (`lockfileVersion` 1) | no `FRONTEND_DIR` or no `package.json` |
@@ -163,6 +180,22 @@ The `## Description:` lines of the commands cannot be translated: DDEV reads the
 Checks compare contents, not file times: with Mutagen, modification times do not reach the container.
 
 Own checks start at `60-`, so bundled checks added later never collide with them.
+
+**Git:** `05-git` uses the git of the host, not the one in the web container: DDEV leaves `.git` out of the Mutagen
+sync and only bind-mounts it where possible, never with `no_bind_mounts: true`. The host command `project-status`
+reads the facts with `git` (read only, no fetch) and passes them to the checks in the container.
+
+| Case | Status | Next step |
+|------|--------|-----------|
+| current branch is in `PROTECTED_BRANCHES` (default `main preview`) | WARN | `git switch -c feature/<name>` |
+| a branch from `TRACKED_BRANCHES` (default `main develop`) is behind its upstream | WARN | `git pull` for the current branch, otherwise `git fetch origin main:main` (fast-forward without checkout) |
+| ... is ahead of its upstream or has diverged | WARN | `git log` to see the commits |
+| ... tracks an upstream that no longer exists | WARN | – |
+| last fetch older than `GIT_FETCH_DAYS` days, or none yet | INFO | `git fetch` |
+
+Branches without an upstream or missing locally are left out. The check never fetches: it stays offline and fast, and
+the comparison is as fresh as the last `git fetch` or `git pull`, hence the INFO. With `-i`, the project data show the
+current branch. In a monorepo, the branch of the repository around the project counts.
 
 **composer.lock out of step:** `composer install` installs from `composer.lock` and only warns when `composer.json`
 changed since, so `vendor/` can match an outdated lock file. That happens after a `git pull` or branch switch that
@@ -288,10 +321,16 @@ Remember `chmod +x`. New or changed checks and changes to the `config` count at 
 from `/var/www/html/.ddev/project-status`, which Mutagen keeps in sync. Changed commands (`commands/web/`) need a
 `ddev restart`, because DDEV copies them to `/mnt/ddev_config` on start.
 
+Checks run in the web container and do not see the host. The git facts of the host are available as environment
+variables: `PROJECT_STATUS_GIT_STATE` (`ok`, `no_git`, `no_repo`), `PROJECT_STATUS_GIT_BRANCH` (empty when detached),
+`PROJECT_STATUS_GIT_HEAD`, `PROJECT_STATUS_GIT_BRANCHES` (tracked branches: name, upstream, track, tab separated) and
+`PROJECT_STATUS_GIT_FETCHED` (time of the last fetch in seconds since 1970).
+
 ## Tests
 
 `tests/test.bats` follows the [DDEV add-on template](https://github.com/ddev/ddev-addon-template): it creates an empty
-project, installs the add-on and checks the output, an own PHP check, `SKIP_CHECKS`, German output, own texts and large data in the Mutagen sync.
+project, installs the add-on and checks the output, an own PHP check, `SKIP_CHECKS`, German output, own texts, the
+update from v1.x, git branches against a local bare repository and large data in the Mutagen sync.
 GitHub Actions run it on every push. Locally, with `bats-core`, `bats-assert`, `bats-file` and `bats-support`
 installed, in the add-on directory:
 

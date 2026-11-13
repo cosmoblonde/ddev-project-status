@@ -4,14 +4,17 @@ name: project-status
 # "ddev add-on get" and removed by "ddev add-on remove". Own checks and project-status/config are not listed,
 # so updates and removal leave them alone.
 project_files:
-  - commands/web/project-status
+  - commands/host/project-status
   - commands/web/project-commands
   - config.project-status.yaml
+  - project-status/runner
   - project-status/lib/output.sh
   - project-status/lib/i18n.sh
+  - project-status/lib/git.sh
   - project-status/lang/en
   - project-status/lang/de
   - project-status/config.example
+  - project-status/checks/05-git
   - project-status/checks/10-composer
   - project-status/checks/15-composer-lock
   - project-status/checks/20-npm
@@ -26,8 +29,29 @@ ddev_version_constraint: '>= v1.24.10'
 # post_install_actions are executed in the context of the target project's .ddev directory.
 post_install_actions:
   - |
+    #ddev-description:Remove the web command project-status of v1.x, it is a host command since v2.0.0
+    if [ -f commands/web/project-status ]; then
+      if grep -q '#ddev-generated' commands/web/project-status; then
+        rm commands/web/project-status
+      else
+        # an own copy from before the add-on: never delete it, but it hides the host command of the same name
+        echo "WARNING: .ddev/commands/web/project-status has no #ddev-generated line and was kept."
+        echo "It is not part of this add-on and hides the host command \"ddev project-status\": delete it."
+      fi
+    fi
+    # DDEV does not replace a file without #ddev-generated, so an own copy stays in place of the bundled one
+    if [ -f commands/web/project-commands ] && ! grep -q '#ddev-generated' commands/web/project-commands; then
+      echo "WARNING: .ddev/commands/web/project-commands has no #ddev-generated line and was not replaced."
+      echo "Delete it and run \"ddev add-on get\" again to get the bundled version."
+    fi
+    # hooks from the time before the add-on run in the container, where "ddev" is only a stub
+    if grep -Eq '^[[:space:]]*-[[:space:]]*exec(-host)?:.*project-(status|commands)' config.yaml 2>/dev/null; then
+      echo "WARNING: .ddev/config.yaml has a hook on project-status or project-commands. Remove it:"
+      echo "config.project-status.yaml runs project-status on start, HOOK_OPTIONS=\"-c\" adds the commands."
+    fi
+  - |
     #ddev-description:Make commands and checks executable
-    chmod +x commands/web/project-status commands/web/project-commands project-status/checks/*
+    chmod +x commands/host/project-status commands/web/project-commands project-status/runner project-status/checks/*
   - |
     #ddev-description:Create project-status/config from config.example if it does not exist yet
     if [ ! -f project-status/config ]; then

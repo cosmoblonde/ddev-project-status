@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+#ddev-generated
+# Git: not working on a branch from PROTECTED_BRANCHES, branches from TRACKED_BRANCHES neither behind nor ahead of
+# their upstream. The facts come from the host (lib/git.sh, passed as PROJECT_STATUS_GIT_*) as of the last fetch:
+# the check never fetches, so it stays offline and fast.
+
+source "$PROJECT_STATUS_DIR/lib/i18n.sh"
+
+case "${PROJECT_STATUS_GIT_STATE:-}" in
+  ok) ;;
+  no_git) t git.no_git; exit 3 ;;
+  *) t git.no_repo; exit 3 ;;
+esac
+
+branch="${PROJECT_STATUS_GIT_BRANCH:-}"
+problems=()
+compared=()
+code=0
+
+for protected in $PROTECTED_BRANCHES; do
+  if [[ -n "$branch" && "$branch" == "$protected" ]]; then
+    problems+=("$(t git.protected "$branch")")
+    echo "next: git switch -c feature/<name>"
+    code=1
+  fi
+done
+
+# one line per branch: name, upstream, track ("ahead 1, behind 2", "gone" or empty when in step);
+# git sorts them by name, the messages follow the order of TRACKED_BRANCHES
+lines=()
+for tracked in $TRACKED_BRANCHES; do
+  while IFS= read -r line; do
+    [[ "${line%%$'\t'*}" == "$tracked" ]] && lines+=("$line")
+  done <<< "${PROJECT_STATUS_GIT_BRANCHES:-}"
+done
+
+for line in "${lines[@]}"; do
+  IFS=$'\t' read -r name upstream track <<< "$line"
+  [[ -n "$name" && -n "$upstream" ]] || continue
+  compared+=("$name")
+  ahead=0
+  behind=0
+  [[ "$track" =~ ahead\ ([0-9]+) ]] && ahead="${BASH_REMATCH[1]}"
+  [[ "$track" =~ behind\ ([0-9]+) ]] && behind="${BASH_REMATCH[1]}"
+  if [[ "$track" == "gone" ]]; then
+    problems+=("$(t git.gone "$name" "$upstream")")
+  elif (( ahead && behind )); then
+    problems+=("$(t git.diverged "$name" "$upstream" "$ahead" "$behind")")
+    echo "next: git log --oneline --left-right $name...$upstream"
+  elif (( behind )); then
+    problems+=("$(t git.behind "$name" "$behind" "$upstream")")
+    if [[ "$name" == "$branch" ]]; then
+      echo "next: git pull"
+    else
+      # fast-forwards the branch without checking it out, refuses anything else
+      echo "next: git fetch ${upstream%%/*} ${upstream#*/}:$name"
+    fi
+  elif (( ahead )); then
+    problems+=("$(t git.ahead "$name" "$ahead" "$upstream")")
+    echo "next: git log --oneline $upstream..$name"
+  else
+    continue
+  fi
+  code=1
+done
+
+# the comparison is only as fresh as the last fetch
+[[ "$GIT_FETCH_DAYS" =~ ^[0-9]+$ ]] || GIT_FETCH_DAYS=7
+if (( ${#compared[@]} && GIT_FETCH_DAYS > 0 )); then
+  if [[ -z "${PROJECT_STATUS_GIT_FETCHED:-}" ]]; then
+    echo "info: $(t git.never_fetched)"
+  else
+    days=$(( ($(date +%s) - PROJECT_STATUS_GIT_FETCHED) / 86400 ))
+    (( days >= GIT_FETCH_DAYS )) && echo "info: $(t git.fetch_old "$days")"
+  fi
+fi
+
+if (( ${#problems[@]} )); then
+  # one message line per check: join the problems
+  message="${problems[0]}"
+  for problem in "${problems[@]:1}"; do
+    message+=" – $problem"
+  done
+  echo "$message"
+  exit "$code"
+fi
+
+label="${branch:-$(t git.detached "${PROJECT_STATUS_GIT_HEAD:-}")}"
+if (( ${#compared[@]} )); then
+  list=$(printf '%s, ' "${compared[@]}")
+  t git.ok "$label" "${list%, }"
+else
+  t git.ok_branch "$label"
+fi
+exit 0
