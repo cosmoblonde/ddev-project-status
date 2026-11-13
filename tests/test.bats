@@ -123,6 +123,45 @@ teardown() {
   assert_output --partial "Nächste Schritte"
 }
 
+@test "Next steps grouped by check" {
+  set -eu -o pipefail
+  run ddev add-on get "${DIR}"
+  assert_success
+  run ddev restart -y
+  assert_success
+
+  echo 'SKIP_CHECKS="57-sync-size"' >> .ddev/project-status/config
+  cat > .ddev/project-status/checks/60-custom <<'SH'
+#!/usr/bin/env bash
+echo "own check reports something"
+echo "next: ddev my-command"
+echo "next: ddev my-command"
+echo "next: ddev restart"
+exit 1
+SH
+  cat > .ddev/project-status/checks/61-custom <<'SH'
+#!/usr/bin/env bash
+echo "second check reports something"
+echo "next: ddev restart"
+exit 1
+SH
+  chmod +x .ddev/project-status/checks/60-custom .ddev/project-status/checks/61-custom
+  run ddev project-status
+  assert_success
+  # every check with its steps below its status line, a step repeated within a check is shown once
+  assert_output --partial "Next steps
+  [FAIL]  Database is empty
+          ddev import-db --file=<dump.sql.gz>
+
+  [WARN]  own check reports something
+          ddev my-command
+          ddev restart
+
+  [WARN]  second check reports something
+          ddev restart
+"
+}
+
 @test "TYPO3 Solr configured without the Solr add-on" {
   set -eu -o pipefail
   run ddev add-on get "${DIR}"
