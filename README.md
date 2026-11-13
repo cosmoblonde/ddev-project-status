@@ -30,8 +30,11 @@ Checks
   [WARN]  node_modules does not match package-lock.json
 
 Next steps
-  ddev composer install
-  ddev exec -d /var/www/html/frontend npm ci
+  [WARN]  Composer packages do not match composer.lock
+          ddev composer install
+
+  [WARN]  node_modules does not match package-lock.json
+          ddev exec -d /var/www/html/frontend npm ci
 
 project-status: 2 problem(s) found, all checks with "ddev project-status -v".
 ```
@@ -224,7 +227,8 @@ run in the web container, in the project root, in name order. Name own checks fr
 **stdout**
 
 * first line without prefix: the message
-* `next: <command>`: next step; the same command from several checks is shown once
+* `next: <command>`: next step, listed below the status line of the check; the same command twice in one check is
+  shown once
 * `info: <message>`: something harmless the check did (always shown)
 
 **stderr** is shown with `-v` only, useful for debug output.
