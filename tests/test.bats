@@ -229,3 +229,51 @@ teardown() {
   assert_success
   assert_output --partial "[SKIP]  Project does not use Mutagen"
 }
+
+@test "composer.lock against composer.json and the PHP platform" {
+  set -eu -o pipefail
+  run ddev add-on get "${DIR}"
+  assert_success
+  run ddev restart -y
+  assert_success
+
+  # a path package keeps the test offline
+  mkdir -p packages/needs-php
+  echo '{"name": "acme/needs-php", "version": "1.0.0", "require": {"php": ">=99.0", "ext-doesnotexist": "*"}}' > packages/needs-php/composer.json
+  echo '{"repositories": [{"type": "path", "url": "packages/*"}], "require": {"php": ">=8.0"}}' > composer.json
+  run ddev composer install
+  assert_success
+
+  run ddev project-status -v
+  assert_success
+  assert_output --partial "[OK]    Composer packages match composer.lock"
+  assert_output --partial "[OK]    composer.lock matches composer.json and the PHP platform"
+
+  # composer.json changed, composer.lock not: vendor/ still matches the lock file, the lock file is outdated
+  echo '{"repositories": [{"type": "path", "url": "packages/*"}], "require": {"php": ">=8.1"}}' > composer.json
+  run ddev project-status
+  assert_success
+  assert_output --partial "[WARN]  composer.lock does not match composer.json"
+  assert_output --partial "ddev composer update --dry-run"
+  refute_output --partial "[WARN]  Composer packages do not match composer.lock"
+
+  # a required package missing in composer.lock: "composer install" cannot help, so 10-composer does not suggest it
+  echo '{"repositories": [{"type": "path", "url": "packages/*"}], "require": {"php": ">=8.0", "acme/needs-php": "*"}}' > composer.json
+  run ddev project-status -v
+  assert_success
+  assert_output --partial "[SKIP]  vendor/ not comparable: composer.lock lacks packages from composer.json"
+  assert_output --partial "[WARN]  composer.lock does not match composer.json"
+  refute_output --partial "ddev composer install"
+
+  # composer.lock resolved for another platform, as by a server with another PHP version
+  echo '{"repositories": [{"type": "path", "url": "packages/*"}], "require": {"acme/needs-php": "*"}, "config": {"platform": {"php": "99.0", "ext-doesnotexist": "1.0"}}}' > composer.json
+  run ddev composer update
+  assert_success
+  run ddev project-status
+  assert_success
+  assert_output --partial "[FAIL]  composer.lock does not fit the PHP platform: "
+  assert_output --partial "php >=99.0 (acme/needs-php: "
+  assert_output --partial "ext-doesnotexist * (acme/needs-php: n/a)"
+  assert_output --partial "ddev composer check-platform-reqs --lock"
+  assert_output --regexp 'composer.json sets config.platform.php 99.0, DDEV runs PHP [0-9]+\.[0-9]+'
+}
