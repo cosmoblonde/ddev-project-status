@@ -252,6 +252,74 @@ SH
   refute_output --partial "main is 1 commit(s) behind"
 }
 
+@test "TYPO3 language packs" {
+  set -eu -o pipefail
+  run ddev add-on get "${DIR}"
+  assert_success
+  run ddev restart -y
+  assert_success
+
+  run ddev project-status -v
+  assert_success
+  assert_output --partial "[SKIP]  No TYPO3 installed"
+
+  # Composer metadata of two core extensions and one own extension, without installing TYPO3
+  for package in cms-core:core cms-backend:backend; do
+    mkdir -p "vendor/typo3/${package%%:*}/Resources/Private/Language"
+    echo "{\"extra\": {\"typo3/cms\": {\"extension-key\": \"${package#*:}\"}}}" > "vendor/typo3/${package%%:*}/composer.json"
+  done
+  mkdir -p vendor/acme/own/Resources/Private/Language vendor/composer
+  cat > vendor/composer/installed.php <<'PHP'
+<?php return ['versions' => [
+    'typo3/cms-core' => ['type' => 'typo3-cms-framework', 'install_path' => __DIR__ . '/../typo3/cms-core'],
+    'typo3/cms-backend' => ['type' => 'typo3-cms-framework', 'install_path' => __DIR__ . '/../typo3/cms-backend'],
+    'acme/own' => ['type' => 'typo3-cms-extension', 'install_path' => __DIR__ . '/../acme/own'],
+]];
+PHP
+  run ddev project-status -v
+  assert_success
+  assert_output --partial "[SKIP]  No language besides English active"
+
+  # active language in a minimal TYPO3 configuration; the project type is php, so there is no "ddev typo3"
+  mkdir -p config/system
+  echo "<?php return ['EXTCONF' => ['lang' => ['availableLanguages' => ['de']]]];" > config/system/settings.php
+  # output and exit in additional.php neither end up in the result nor lose the language list
+  echo "<?php echo \"noise\\n\"; exit;" > config/system/additional.php
+  run ddev project-status
+  assert_success
+  assert_output --partial "[WARN]  Language pack de missing"
+  assert_output --partial "ddev exec vendor/bin/typo3 language:update"
+  refute_output --partial "noise"
+
+  # created in the container, as language:update does: Mutagen does not sync modification times
+  run ddev exec mkdir -p var/labels/de/core
+  assert_success
+  run ddev project-status
+  assert_success
+  assert_output --partial "[WARN]  Language pack de incomplete: 1 core extension(s) without pack (backend)"
+
+  run ddev exec mkdir -p var/labels/de/backend
+  assert_success
+  run ddev project-status -v
+  assert_success
+  assert_output --partial "[OK]    Language packs de complete, last update 0 days ago"
+  refute_output --partial "acme"
+
+  run ddev exec touch -t 202001010000 var/labels/de/core
+  assert_success
+  run ddev project-status
+  assert_success
+  assert_output --regexp '\[INFO\]  Language packs de last updated [0-9]+ days ago: ddev exec vendor/bin/typo3 language:update'
+
+  # own list in the config instead of the TYPO3 configuration
+  echo 'LANGUAGE_PACKS="de fr"' >> .ddev/project-status/config
+  echo 'LANGUAGE_PACK_DAYS="0"' >> .ddev/project-status/config
+  run ddev project-status
+  assert_success
+  assert_output --partial "[WARN]  Language pack fr missing"
+  refute_output --partial "[INFO]  Language packs"
+}
+
 @test "TYPO3 Solr configured without the Solr add-on" {
   set -eu -o pipefail
   run ddev add-on get "${DIR}"

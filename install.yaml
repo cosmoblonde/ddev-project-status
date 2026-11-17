@@ -23,6 +23,7 @@ project_files:
   - project-status/checks/50-assets
   - project-status/checks/55-typo3-solr
   - project-status/checks/57-sync-size
+  - project-status/checks/58-typo3-labels
 
 ddev_version_constraint: '>= v1.24.10'
 

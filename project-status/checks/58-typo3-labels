@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+#ddev-generated
+# TYPO3 language packs: every active language has its packs in var/labels, complete for the core extensions, and
+# the last "typo3 language:update" is not older than LANGUAGE_PACK_DAYS. The active languages come from
+# EXTCONF/lang/availableLanguages of the TYPO3 configuration, or from LANGUAGE_PACKS.
+# Read only, no database, no network: downloading is "typo3 language:update".
+
+source "$PROJECT_STATUS_DIR/lib/i18n.sh"
+
+[[ -f "$COMPOSER_DIR/vendor/composer/installed.php" ]] || { t labels.no_typo3; exit 3; }
+
+# Prints "no_typo3", "no_languages", or one line per language: iso, mtime of the oldest core pack (0: none),
+# core extensions without pack. Every update replaces the folder of a pack, so its mtime is the time of the download.
+# Not the host: Mutagen only replaces changed files there and keeps the folders. Not the files: they carry the times of
+# the archive from localize.typo3.org.
+# Every line starts with "labels<tab>": only those count, whatever the TYPO3 configuration or PHP itself prints.
+facts=$(php -r '
+  [, $root, $docroot, $configured] = $argv;
+  $installed = include "$root/vendor/composer/installed.php";
+  $packages = $installed["versions"] ?? [];
+  if (!isset($packages["typo3/cms-core"]["install_path"])) {
+      echo "labels\tno_typo3\n";
+      exit;
+  }
+
+  $languages = preg_split("/\s+/", trim($configured), -1, PREG_SPLIT_NO_EMPTY);
+  $reading = false;
+  // a shutdown function also runs when the TYPO3 configuration calls exit or fails fatally
+  register_shutdown_function(function () use ($root, $packages, $languages, &$reading) {
+      // drop whatever the configuration printed
+      while (ob_get_level()) {
+          ob_end_clean();
+      }
+      // settings.php itself failed: nothing to report
+      if ($reading) {
+          return;
+      }
+      $languages = $languages ?: array_values(array_filter((array)($GLOBALS["TYPO3_CONF_VARS"]["EXTCONF"]["lang"]["availableLanguages"] ?? [])));
+      if (!$languages) {
+          echo "labels\tno_languages\n";
+          return;
+      }
+
+      // core extensions with labels; localize.typo3.org has packs for all of them, for others only maybe
+      $keys = [];
+      foreach ($packages as $name => $package) {
+          $path = $package["install_path"] ?? "";
+          if (($package["type"] ?? "") !== "typo3-cms-framework" || !is_dir("$path/Resources/Private/Language")) {
+              continue;
+          }
+          $manifest = json_decode((string)@file_get_contents("$path/composer.json"), true) ?: [];
+          $keys[] = $manifest["extra"]["typo3/cms"]["extension-key"] ?? str_replace("-", "_", substr($name, strlen("typo3/cms-")));
+      }
+      sort($keys);
+
+      foreach ($languages as $iso) {
+          $oldest = 0;
+          $missing = [];
+          foreach ($keys as $key) {
+              $dir = "$root/var/labels/$iso/$key";
+              if (!is_dir($dir)) {
+                  $missing[] = $key;
+                  continue;
+              }
+              $oldest = $oldest ? min($oldest, filemtime($dir)) : filemtime($dir);
+          }
+          printf("labels\t%s\t%d\t%s\n", $iso, $oldest, implode(" ", $missing));
+      }
+  });
+
+  if (!$languages) {
+      // composer mode since TYPO3 v12, before that typo3conf/; only the language list is used
+      $files = [
+          "$root/config/system/settings.php" => "$root/config/system/additional.php",
+          "$root/$docroot/typo3conf/LocalConfiguration.php" => "$root/$docroot/typo3conf/AdditionalConfiguration.php",
+      ];
+      $GLOBALS["TYPO3_CONF_VARS"] = [];
+      ob_start();
+      foreach ($files as $settings => $additional) {
+          if (!is_file($settings)) {
+              continue;
+          }
+          $reading = true;
+          $GLOBALS["TYPO3_CONF_VARS"] = (array)(include $settings);
+          $reading = false;
+          // may need classes or a booted TYPO3; whatever it sets before failing still counts
+          try {
+              is_file($additional) && include $additional;
+          } catch (\Throwable $e) {
+          }
+          break;
+      }
+  }
+' "$COMPOSER_DIR" "${DDEV_DOCROOT:-public}" "$LANGUAGE_PACKS" 2>/dev/null | sed -n $'s/^labels\t//p')
+
+case "$facts" in
+  no_typo3)     t labels.no_typo3; exit 3 ;;
+  no_languages) t labels.no_languages; exit 3 ;;
+  "")           t labels.unreadable; exit 3 ;;
+esac
+
+# "ddev typo3" exists for the DDEV project type typo3 only
+hint="ddev typo3 language:update"
+if [[ "${DDEV_PROJECT_TYPE:-typo3}" != "typo3" ]]; then
+  hint="ddev exec vendor/bin/typo3 language:update"
+  [[ "$COMPOSER_DIR" == "." ]] || hint="ddev exec -d /var/www/html/${COMPOSER_DIR#./} vendor/bin/typo3 language:update"
+fi
+
+[[ "$LANGUAGE_PACK_DAYS" =~ ^[0-9]+$ ]] || LANGUAGE_PACK_DAYS=30
+now=$(date +%s)
+problems=()
+languages=()
+old=()
+oldest=0
+while IFS=$'\t' read -r iso mtime missing; do
+  languages+=("$iso")
+  if (( mtime == 0 )); then
+    problems+=("$(t labels.missing "$iso")")
+    continue
+  fi
+  if [[ -n "$missing" ]]; then
+    read -ra keys <<< "$missing"
+    list="${keys[*]:0:3}"
+    list="${list// /, }"
+    (( ${#keys[@]} > 3 )) && list+=" …"
+    problems+=("$(t labels.incomplete "$iso" "${#keys[@]}" "$list")")
+  fi
+  (( oldest == 0 || mtime < oldest )) && oldest=$mtime
+  (( LANGUAGE_PACK_DAYS > 0 && (now - mtime) / 86400 >= LANGUAGE_PACK_DAYS )) && old+=("$iso")
+done <<< "$facts"
+
+days=$(( (now - oldest) / 86400 ))
+if (( ${#old[@]} )); then
+  list=$(printf '%s, ' "${old[@]}")
+  # the command goes into the text: next steps belong to the status line, which may be OK
+  echo "info: $(t labels.old "${list%, }" "$days" "$hint")"
+fi
+
+list=$(printf '%s, ' "${languages[@]}")
+if (( ${#problems[@]} )); then
+  # one message line per check: join the problems
+  message="${problems[0]}"
+  for problem in "${problems[@]:1}"; do
+    message+=" – $problem"
+  done
+  echo "$message"
+  echo "next: $hint"
+  exit 1
+fi
+
+t labels.ok "${list%, }" "$days"
+exit 0

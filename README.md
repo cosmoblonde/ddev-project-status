@@ -130,6 +130,8 @@ Every value is available to the checks as environment variable.
 | `PROTECTED_BRANCHES` | `main preview` | `05-git` warns when work happens on one of these branches |
 | `TRACKED_BRANCHES` | `main develop` | `05-git` compares these branches with their upstream; also read on the host, so keep the plain `KEY="value"` form |
 | `GIT_FETCH_DAYS` | `7` | `05-git` hints at `git fetch` when the last fetch is older, `0`: no hint |
+| `LANGUAGE_PACKS` | empty | `58-typo3-labels` checks these languages, e.g. `de fr`; empty: the active languages of the TYPO3 configuration |
+| `LANGUAGE_PACK_DAYS` | `30` | `58-typo3-labels` hints at `language:update` when the packs are older, `0`: no hint |
 | `COMPOSER_HINT` | `ddev composer install` | next step for Composer problems |
 | `NPM_HINT` | `npm ci` in `FRONTEND_DIR` | next step for npm problems |
 | `BUILD_HINT` | `npm run build` in `FRONTEND_DIR` | next step for missing build results |
@@ -176,8 +178,10 @@ The `## Description:` lines of the commands cannot be translated: DDEV reads the
 | `50-assets` | build results from `REQUIRED_ASSETS` exist | no `REQUIRED_ASSETS` |
 | `55-typo3-solr` | [ddev/ddev-typo3-solr](https://github.com/ddev/ddev-typo3-solr) is installed, Solr answers and has all cores from `.ddev/typo3-solr/config.yaml` (admin API, read only) | no `.ddev/typo3-solr/config.yaml` |
 | `57-sync-size` | no files over `LARGE_FILE_MB` and no folders over `LARGE_DIR_MB` in the Mutagen sync | project does not use Mutagen |
+| `58-typo3-labels` | the TYPO3 language packs of all active languages exist in `var/labels`, complete for the core extensions, and are not older than `LANGUAGE_PACK_DAYS` (no database, no network) | no TYPO3, or no language besides English active |
 
-Checks compare contents, not file times: with Mutagen, modification times do not reach the container.
+Checks compare contents, not file times: with Mutagen, modification times do not reach the container. The one
+exception is the age of the language packs in `58-typo3-labels`, see below.
 
 Own checks start at `60-`, so bundled checks added later never collide with them.
 
@@ -196,6 +200,25 @@ reads the facts with `git` (read only, no fetch) and passes them to the checks i
 Branches without an upstream or missing locally are left out. The check never fetches: it stays offline and fast, and
 the comparison is as fresh as the last `git fetch` or `git pull`, hence the INFO. With `-i`, the project data show the
 current branch. In a monorepo, the branch of the repository around the project counts.
+
+**TYPO3 language packs:** `typo3 language:update` downloads the translations of all active languages from
+localize.typo3.org to `var/labels/<language>/<extension>/`. The active languages are those in
+`EXTCONF/lang/availableLanguages` (Admin Tools > Maintenance > Manage Language Packs); the languages of the site
+configuration do not count. `58-typo3-labels` reads that list from the TYPO3 configuration in the web container, only
+the language codes, or takes `LANGUAGE_PACKS` from the config instead.
+
+| Case | Status | Next step |
+|------|--------|-----------|
+| no pack at all for an active language | WARN | `ddev typo3 language:update` |
+| core extensions without pack, e.g. added after the last update | WARN | `ddev typo3 language:update` |
+| oldest pack older than `LANGUAGE_PACK_DAYS` days | INFO | `ddev typo3 language:update` |
+
+Only core extensions count as missing: localize.typo3.org has packs for all of them, for other extensions only
+sometimes and for own extensions never. Every update replaces the folder of a pack, so its modification time is the
+time of the last download in the container. The host does not tell: Mutagen only replaces changed files there and
+keeps the folders. Neither do the files: they carry the times of the archive from localize.typo3.org, the XLF headers
+the date of the English source file. After `ddev mutagen reset` the packs look new. Projects of another DDEV type than
+`typo3` get `ddev exec vendor/bin/typo3 language:update` as next step.
 
 **composer.lock out of step:** `composer install` installs from `composer.lock` and only warns when `composer.json`
 changed since, so `vendor/` can match an outdated lock file. That happens after a `git pull` or branch switch that
@@ -330,7 +353,8 @@ variables: `PROJECT_STATUS_GIT_STATE` (`ok`, `no_git`, `no_repo`), `PROJECT_STAT
 
 `tests/test.bats` follows the [DDEV add-on template](https://github.com/ddev/ddev-addon-template): it creates an empty
 project, installs the add-on and checks the output, an own PHP check, `SKIP_CHECKS`, German output, own texts, the
-update from v1.x, git branches against a local bare repository and large data in the Mutagen sync.
+update from v1.x, git branches against a local bare repository, TYPO3 language packs and large data in the Mutagen
+sync.
 GitHub Actions run it on every push. Locally, with `bats-core`, `bats-assert`, `bats-file` and `bats-support`
 installed, in the add-on directory:
 
