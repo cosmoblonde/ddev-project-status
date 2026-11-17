@@ -44,6 +44,12 @@ PROTECTED_BRANCHES="main preview"
 TRACKED_BRANCHES="main develop"
 GIT_FETCH_DAYS="7"
 
+# TYPO3 language packs, checked by checks/58-typo3-labels: languages to check (empty: the active languages of the
+# TYPO3 configuration, EXTCONF/lang/availableLanguages) and the age in days of the last "typo3 language:update" from
+# which on a hint appears (0: no hint)
+LANGUAGE_PACKS=""
+LANGUAGE_PACK_DAYS="30"
+
 # Commands shown as next step. Empty NPM_HINT / BUILD_HINT: npm ci / npm run build in FRONTEND_DIR.
 # Projects with an own update command can point all three to it, e.g. "ddev project-update".
 COMPOSER_HINT="ddev composer install"

@@ -82,6 +82,14 @@ solr.not_ready = Solr is running but not ready (HTTP %s), see the Solr log
 solr.cores_missing = Solr cores missing: %s
 solr.ok = All %s Solr cores present
 
+labels.no_typo3 = No TYPO3 installed (vendor/composer/installed.php)
+labels.no_languages = No language besides English active (EXTCONF/lang/availableLanguages)
+labels.unreadable = Language packs cannot be checked (TYPO3 configuration not readable)
+labels.missing = Language pack %s missing
+labels.incomplete = Language pack %s incomplete: %s core extension(s) without pack (%s)
+labels.old = Language packs %s last updated %s days ago: %s
+labels.ok = Language packs %s complete, last update %s days ago
+
 sync.no_mutagen = Project does not use Mutagen
 sync.bad_limit = %s must be a whole number above 0, not "%s"
 sync.no_yq = Sync size cannot be checked (yq not available)

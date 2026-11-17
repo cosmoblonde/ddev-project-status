@@ -43,6 +43,8 @@ cb_load_config() {
   PROTECTED_BRANCHES="main preview"
   TRACKED_BRANCHES="main develop"
   GIT_FETCH_DAYS="7"
+  LANGUAGE_PACKS=""
+  LANGUAGE_PACK_DAYS="30"
   COMPOSER_HINT="ddev composer install"
   NPM_HINT=""
   BUILD_HINT=""

@@ -82,6 +82,14 @@ solr.not_ready = Solr läuft, ist aber nicht bereit (HTTP %s), siehe Solr-Log
 solr.cores_missing = Solr-Cores fehlen: %s
 solr.ok = Alle %s Solr-Cores vorhanden
 
+labels.no_typo3 = Kein TYPO3 installiert (vendor/composer/installed.php)
+labels.no_languages = Keine Sprache außer Englisch aktiv (EXTCONF/lang/availableLanguages)
+labels.unreadable = Sprachpakete nicht prüfbar (TYPO3-Konfiguration nicht lesbar)
+labels.missing = Sprachpaket %s fehlt
+labels.incomplete = Sprachpaket %s unvollständig: %s Core-Extension(s) ohne Paket (%s)
+labels.old = Sprachpakete %s zuletzt vor %s Tagen aktualisiert: %s
+labels.ok = Sprachpakete %s vollständig, letztes Update vor %s Tagen
+
 sync.no_mutagen = Projekt nutzt kein Mutagen
 sync.bad_limit = %s muss eine ganze Zahl über 0 sein, nicht "%s"
 sync.no_yq = Sync-Größe nicht prüfbar (yq nicht verfügbar)
